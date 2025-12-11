@@ -8,7 +8,7 @@ export async function createSupplier(data: { name: string; logoUrl?: string }) {
     const supplier = await prisma.supplier.create({
       data: {
         name: data.name,
-        logoUrl: data.logoUrl || null,
+        ...(data.logoUrl !== undefined && { logoUrl: data.logoUrl }),
       },
     });
     revalidatePath("/suppliers");
@@ -66,7 +66,7 @@ export async function updateSupplier(id: string, data: { name: string; logoUrl?:
       where: { id },
       data: {
         name: data.name,
-        logoUrl: data.logoUrl !== undefined ? data.logoUrl : undefined,
+        ...(data.logoUrl !== undefined && { logoUrl: data.logoUrl }),
       },
     });
     revalidatePath("/suppliers");

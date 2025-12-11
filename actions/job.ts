@@ -1,7 +1,7 @@
 "use server";
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 
 type JobWithRelations = Prisma.JobGetPayload<{
   include: {
@@ -16,9 +16,11 @@ type JobWithRelations = Prisma.JobGetPayload<{
   };
 }>;
 
-type GetAllJobsResult =
-  | { success: true; data: JobWithRelations[]; error: null }
-  | { success: false; data: null; error: unknown };
+type GetAllJobsResult = {
+  success: boolean;
+  data: JobWithRelations[] | null;
+  error: unknown | null;
+};
 
 export async function getAllJobs(): Promise<GetAllJobsResult> {
   try {

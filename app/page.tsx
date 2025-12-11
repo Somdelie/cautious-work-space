@@ -21,7 +21,7 @@ export default async function DashboardPage() {
   const productTypes = await getProductTypes();
   const finishedJobs = await getFinishedJobs();
 
-  const totalJobs = jobsResult.success ? jobsResult.data.length : 0;
+  const totalJobs = jobsResult.success && jobsResult.data ? jobsResult.data.length : 0;
 
   return (
     <div className="max-h-[90vh] bg-slate-950/40 overflow-y-auto">

@@ -51,8 +51,9 @@ export function EditSupplierDialog({
         if (result.success && result.data) {
           const supplier = result.data;
           setName(supplier.name);
-          setLogoUrl(supplier.logoUrl || null);
-          setLogoPreview(supplier.logoUrl || null);
+          const logoUrl = 'logoUrl' in supplier ? (supplier.logoUrl as string | null) : null;
+          setLogoUrl(logoUrl);
+          setLogoPreview(logoUrl);
         } else {
           toast.error("Failed to load supplier data");
           onOpenChange(false);

@@ -16,10 +16,12 @@ import {
 } from "lucide-react";
 
 export default async function DashboardPage() {
-  const jobs = await getAllJobs();
+  const jobsResult = await getAllJobs();
   const suppliers = await getSuppliers();
   const productTypes = await getProductTypes();
   const finishedJobs = await getFinishedJobs();
+
+  const totalJobs = jobsResult.success ? jobsResult.data.length : 0;
 
   return (
     <div className="max-h-[90vh] bg-slate-950/40 overflow-y-auto">
@@ -40,9 +42,7 @@ export default async function DashboardPage() {
                 <p className="text-slate-400 text-xs font-medium mb-1">
                   Total Jobs
                 </p>
-                <p className="text-2xl font-bold text-slate-100">
-                  {jobs?.data?.length}
-                </p>
+                <p className="text-2xl font-bold text-slate-100">{totalJobs}</p>
               </div>
               <div className="h-10 w-10 bg-blue-500/10 rounded flex items-center justify-center">
                 <Briefcase className="h-5 w-5 text-blue-500" />

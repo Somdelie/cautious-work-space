@@ -1,9 +1,26 @@
 "use server";
 import { prisma } from "@/lib/prisma";
-import { Job } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
-export async function getAllJobs() {
+type JobWithRelations = Prisma.JobGetPayload<{
+  include: {
+    manager: true;
+    supplier: true;
+    productTypes: true;
+    jobProducts: {
+      include: {
+        productType: true;
+      };
+    };
+  };
+}>;
+
+type GetAllJobsResult =
+  | { success: true; data: JobWithRelations[]; error: null }
+  | { success: false; data: null; error: unknown };
+
+export async function getAllJobs(): Promise<GetAllJobsResult> {
   try {
     const jobs = await prisma.job.findMany({
       include: {
@@ -22,17 +39,19 @@ export async function getAllJobs() {
     });
 
     // Sort jobs: ongoing jobs first (isStarted=true, isFinished=false), then others
-    const sortedJobs = jobs.sort((a: Job, b: Job) => {
-      // Ongoing jobs (started but not finished) come first
-      const aIsOngoing = a.isStarted && !a.isFinished;
-      const bIsOngoing = b.isStarted && !b.isFinished;
+    const sortedJobs = [...jobs].sort(
+      (a: JobWithRelations, b: JobWithRelations) => {
+        // Ongoing jobs (started but not finished) come first
+        const aIsOngoing = a.isStarted && !a.isFinished;
+        const bIsOngoing = b.isStarted && !b.isFinished;
 
-      if (aIsOngoing && !bIsOngoing) return -1;
-      if (!aIsOngoing && bIsOngoing) return 1;
+        if (aIsOngoing && !bIsOngoing) return -1;
+        if (!aIsOngoing && bIsOngoing) return 1;
 
-      // If both are ongoing or both are not, maintain createdAt order (newest first)
-      return 0;
-    });
+        // If both are ongoing or both are not, maintain createdAt order (newest first)
+        return 0;
+      }
+    );
 
     return {
       success: true,

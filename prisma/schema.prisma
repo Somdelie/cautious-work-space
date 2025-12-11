@@ -1,0 +1,72 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  // Remove previewFeatures line completely
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Supplier {
+  id        String     @id @default(cuid())
+  name      String
+  logoUrl   String?
+  products  ProductType[]
+  jobs      Job[]
+}
+
+model ProductType {
+  id          String   @id @default(cuid())
+  type        String
+  shortcut String?
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  jobProducts JobProduct[]
+
+  jobs Job[]
+}
+
+model Manager {
+  id     String @id @default(cuid())
+  name   String
+  phone  String?
+  email  String?
+  jobs   Job[]
+}
+
+model Job {
+  id           String       @id @default(cuid())
+  jobNumber    String
+  siteName     String
+  managerId    String
+  supplierId   String
+  manager      Manager      @relation(fields: [managerId], references: [id])
+  supplier     Supplier     @relation(fields: [supplierId], references: [id])
+  jobProducts  JobProduct[]
+  productTypes ProductType[]
+  isStarted Boolean @default(false)
+  isFinished Boolean @default(false)
+  startedAt DateTime?
+  finishedAt DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model JobProduct {
+  id           String      @id @default(cuid())
+  jobId        String
+  productId    String
+  required     Boolean     @default(false)
+  quantity     Float?
+  unit         String?
+
+  job          Job         @relation(fields: [jobId], references: [id])
+  productType  ProductType @relation(fields: [productId], references: [id])
+}
+

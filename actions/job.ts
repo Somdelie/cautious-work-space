@@ -1,5 +1,6 @@
 "use server";
 import { prisma } from "@/lib/prisma";
+import { Job } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
 export async function getAllJobs() {
@@ -21,7 +22,7 @@ export async function getAllJobs() {
     });
 
     // Sort jobs: ongoing jobs first (isStarted=true, isFinished=false), then others
-    const sortedJobs = jobs.sort((a, b) => {
+    const sortedJobs = jobs.sort((a: Job, b: Job) => {
       // Ongoing jobs (started but not finished) come first
       const aIsOngoing = a.isStarted && !a.isFinished;
       const bIsOngoing = b.isStarted && !b.isFinished;

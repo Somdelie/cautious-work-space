@@ -11,7 +11,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Manager } from "@prisma/client";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import {
@@ -31,6 +30,13 @@ import {
 import { EditManagerDialog } from "../dialogs/edit-manager"; // Assuming this dialog exists or will be created
 import { CreateManagerDialog } from "../dialogs/create-manager";
 import { DeleteManagerDialog } from "../dialogs/delete-manager";
+
+type Manager = {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+};
 
 type SortKey = keyof Manager;
 

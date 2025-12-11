@@ -10,7 +10,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ProductType, Supplier } from "@prisma/client";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import {
@@ -30,6 +29,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CreateProductTypeDialog } from "../dialogs/create-product";
+
+type ProductType = {
+  id: string;
+  type: string;
+  shortcut: string | null;
+  supplierId: string;
+};
+
+type Supplier = {
+  id: string;
+  name: string;
+  logoUrl: string | null;
+};
 
 type ProductTypeWithSupplier = ProductType & {
   supplier: Supplier;

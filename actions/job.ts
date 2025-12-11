@@ -1,20 +1,23 @@
 "use server";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { Prisma } from "@prisma/client";
 
-type JobWithRelations = Prisma.JobGetPayload<{
-  include: {
-    manager: true;
-    supplier: true;
-    productTypes: true;
-    jobProducts: {
+type JobWithRelations = Awaited<
+  ReturnType<
+    typeof prisma.job.findMany<{
       include: {
-        productType: true;
+        manager: true;
+        supplier: true;
+        productTypes: true;
+        jobProducts: {
+          include: {
+            productType: true;
+          };
+        };
       };
-    };
-  };
-}>;
+    }>
+  >
+>[number];
 
 type GetAllJobsResult = {
   success: boolean;

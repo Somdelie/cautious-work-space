@@ -25,6 +25,8 @@ import {
   Clock,
   Play,
   RefreshCw,
+  FileText,
+  ExternalLink,
 } from "lucide-react";
 import { getJobById } from "@/actions/job";
 
@@ -43,6 +45,8 @@ type JobData = {
   startedAt: Date | null;
   finishedAt: Date | null;
   createdAt: Date;
+  specPdfUrl?: string | null;
+  boqPdfUrl?: string | null;
   manager: {
     id: string;
     name: string;
@@ -263,6 +267,60 @@ export function ViewJobDialog({
                 )}
               </div>
             </div>
+
+            {/* Attachments */}
+            {(job.specPdfUrl || job.boqPdfUrl) && (
+              <div className="bg-slate-800/50 border border-slate-700 rounded p-4">
+                <h3 className="text-base font-semibold mb-3 text-slate-100 flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-purple-400" />
+                  Attachments
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {job.specPdfUrl && (
+                    <div className="flex items-center justify-between border border-slate-700 rounded px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-primary" />
+                        <div>
+                          <p className="text-sm font-medium text-slate-100">
+                            Project Spec
+                          </p>
+                          <p className="text-xs text-slate-400 break-all">
+                            {job.specPdfUrl.split("/").pop()}
+                          </p>
+                        </div>
+                      </div>
+                      <Button asChild variant="outline" size="sm" className="gap-1">
+                        <a href={job.specPdfUrl} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="h-4 w-4" />
+                          Open
+                        </a>
+                      </Button>
+                    </div>
+                  )}
+                  {job.boqPdfUrl && (
+                    <div className="flex items-center justify-between border border-slate-700 rounded px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-primary" />
+                        <div>
+                          <p className="text-sm font-medium text-slate-100">
+                            BOQ
+                          </p>
+                          <p className="text-xs text-slate-400 break-all">
+                            {job.boqPdfUrl.split("/").pop()}
+                          </p>
+                        </div>
+                      </div>
+                      <Button asChild variant="outline" size="sm" className="gap-1">
+                        <a href={job.boqPdfUrl} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="h-4 w-4" />
+                          Open
+                        </a>
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Manager and Supplier Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

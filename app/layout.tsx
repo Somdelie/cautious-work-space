@@ -19,6 +19,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Order Checks Admin",
   description: "Admin panel",
+  icons: {
+    icon: "/logo.svg",
+  },
 };
 
 export default function RootLayout({

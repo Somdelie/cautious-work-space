@@ -13,18 +13,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const isImage = file.type.startsWith("image/");
+    const isPdf = file.type === "application/pdf";
+
     // Validate file type
-    if (!file.type.startsWith("image/")) {
+    if (!isImage && !isPdf) {
       return NextResponse.json(
-        { error: "File must be an image" },
+        { error: "File must be an image or PDF" },
         { status: 400 }
       );
     }
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
+    // Validate file size (max 5MB for images, 20MB for PDFs)
+    const maxSize = isPdf ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
+    if (file.size > maxSize) {
       return NextResponse.json(
-        { error: "File size must be less than 5MB" },
+        {
+          error: isPdf
+            ? "PDF size must be less than 20MB"
+            : "Image size must be less than 5MB",
+        },
         { status: 400 }
       );
     }

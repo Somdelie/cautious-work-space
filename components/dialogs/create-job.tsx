@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, Upload, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import { createJob } from "@/actions/job";
 import { getManagers } from "@/actions/manager";
@@ -59,6 +59,12 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
   const [siteName, setSiteName] = useState("");
   const [managerId, setManagerId] = useState("");
   const [supplierId, setSupplierId] = useState("");
+  const [specPdfUrl, setSpecPdfUrl] = useState<string | null>(null);
+  const [boqPdfUrl, setBoqPdfUrl] = useState<string | null>(null);
+  const [specFileName, setSpecFileName] = useState<string | null>(null);
+  const [boqFileName, setBoqFileName] = useState<string | null>(null);
+  const [specUploading, setSpecUploading] = useState(false);
+  const [boqUploading, setBoqUploading] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -85,6 +91,12 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
       setSupplierId("");
       setSelectedProductTypeIds([]);
       setProductTypes([]);
+      setSpecPdfUrl(null);
+      setBoqPdfUrl(null);
+      setSpecFileName(null);
+      setBoqFileName(null);
+      setSpecUploading(false);
+      setBoqUploading(false);
     }
   }, [open]);
 
@@ -136,6 +148,8 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
         managerId,
         supplierId,
         productTypeIds: selectedProductTypeIds.length > 0 ? selectedProductTypeIds : undefined,
+        specPdfUrl: specPdfUrl ?? undefined,
+        boqPdfUrl: boqPdfUrl ?? undefined,
       });
 
       if (result.success) {
@@ -156,6 +170,52 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePdfUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    onSuccess: (url: string, name: string) => void,
+    setUploading: (value: boolean) => void
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      toast.error("Please select a PDF file");
+      return;
+    }
+
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error("PDF size must be less than 20MB");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to upload file");
+      }
+
+      const data = await response.json();
+      onSuccess(data.url, file.name);
+      toast.success("File uploaded");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to upload file"
+      );
+    } finally {
+      setUploading(false);
+      e.target.value = "";
     }
   };
 
@@ -268,6 +328,125 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
               </div>
             </div>
           )}
+
+          <div className="space-y-3">
+            <Label>Attachments (PDF)</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="border rounded-md p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">Project Spec</span>
+                  </div>
+                  {specPdfUrl && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() => {
+                        setSpecPdfUrl(null);
+                        setSpecFileName(null);
+                      }}
+                      disabled={loading || specUploading}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                {specPdfUrl ? (
+                  <p className="text-xs text-muted-foreground break-all">
+                    {specFileName || "spec.pdf"}
+                  </p>
+                ) : (
+                  <label className="flex flex-col items-center justify-center border-2 border-dashed rounded-md py-6 cursor-pointer hover:border-primary/60 transition-colors">
+                    <Upload className="h-5 w-5 text-muted-foreground mb-2" />
+                    <span className="text-sm text-muted-foreground">
+                      Upload Spec PDF
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      PDF up to 20MB
+                    </span>
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      className="hidden"
+                      onChange={(e) =>
+                        handlePdfUpload(e, (url, name) => {
+                          setSpecPdfUrl(url);
+                          setSpecFileName(name);
+                        }, setSpecUploading)
+                      }
+                      disabled={loading || specUploading}
+                    />
+                  </label>
+                )}
+                {specUploading && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Uploading spec...
+                  </div>
+                )}
+              </div>
+
+              <div className="border rounded-md p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">BOQ</span>
+                  </div>
+                  {boqPdfUrl && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() => {
+                        setBoqPdfUrl(null);
+                        setBoqFileName(null);
+                      }}
+                      disabled={loading || boqUploading}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                {boqPdfUrl ? (
+                  <p className="text-xs text-muted-foreground break-all">
+                    {boqFileName || "boq.pdf"}
+                  </p>
+                ) : (
+                  <label className="flex flex-col items-center justify-center border-2 border-dashed rounded-md py-6 cursor-pointer hover:border-primary/60 transition-colors">
+                    <Upload className="h-5 w-5 text-muted-foreground mb-2" />
+                    <span className="text-sm text-muted-foreground">
+                      Upload BOQ PDF
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      PDF up to 20MB
+                    </span>
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      className="hidden"
+                      onChange={(e) =>
+                        handlePdfUpload(e, (url, name) => {
+                          setBoqPdfUrl(url);
+                          setBoqFileName(name);
+                        }, setBoqUploading)
+                      }
+                      disabled={loading || boqUploading}
+                    />
+                  </label>
+                )}
+                {boqUploading && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Uploading BOQ...
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
 
           <div className="flex gap-2 justify-end">
             <Button

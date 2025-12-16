@@ -46,6 +46,8 @@ model Job {
   siteName     String
   managerId    String
   supplierId   String
+  specPdfUrl   String?
+  boqPdfUrl    String?
   manager      Manager      @relation(fields: [managerId], references: [id])
   supplier     Supplier     @relation(fields: [supplierId], references: [id])
   jobProducts  JobProduct[]

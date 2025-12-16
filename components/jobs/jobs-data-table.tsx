@@ -182,7 +182,7 @@ export function JobsDataTable({ jobs }: { jobs: Job[] }) {
           );
         },
         cell: ({ row }) => (
-          <div className="font-medium text-foreground">
+          <div className="font-medium text-foreground uppercase">
             {row.getValue("siteName")}
           </div>
         ),
@@ -223,9 +223,9 @@ export function JobsDataTable({ jobs }: { jobs: Job[] }) {
           const manager = row.original.manager;
           return (
             <div>
-              <div className="font-medium text-foreground">{manager.name}</div>
+              <div className="font-medium capitalize text-orange-600">{manager.name}</div>
               {manager.email && (
-                <div className="text-xs text-muted-foreground">
+                <div className="text-xs text-muted-foreground lowercase">
                   {manager.email}
                 </div>
               )}

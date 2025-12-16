@@ -113,6 +113,8 @@ export async function createJob(data: {
   managerId: string;
   supplierId: string;
   productTypeIds?: string[];
+  specPdfUrl?: string;
+  boqPdfUrl?: string;
 }) {
   try {
     const job = await prisma.job.create({
@@ -121,6 +123,8 @@ export async function createJob(data: {
         siteName: data.siteName,
         managerId: data.managerId,
         supplierId: data.supplierId,
+        specPdfUrl: data.specPdfUrl,
+        boqPdfUrl: data.boqPdfUrl,
         productTypes:
           data.productTypeIds && data.productTypeIds.length > 0
             ? {
@@ -175,6 +179,8 @@ export async function updateJob(
     managerId?: string;
     supplierId?: string;
     productTypeIds?: string[];
+    specPdfUrl?: string | null;
+    boqPdfUrl?: string | null;
   }
 ) {
   try {
@@ -184,11 +190,15 @@ export async function updateJob(
       managerId?: string;
       supplierId?: string;
       productTypes?: { set: Array<{ id: string }> };
+      specPdfUrl?: string | null;
+      boqPdfUrl?: string | null;
     } = {
       jobNumber: data.jobNumber,
       siteName: data.siteName,
       managerId: data.managerId,
       supplierId: data.supplierId,
+      specPdfUrl: data.specPdfUrl,
+      boqPdfUrl: data.boqPdfUrl,
     };
 
     // Update product types if provided

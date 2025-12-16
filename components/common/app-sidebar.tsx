@@ -57,9 +57,9 @@ export function AppSidebar() {
 
   return (
     <Sidebar className="border-r border-gray-800">
-      <SidebarHeader className="border-b border-gray-800 px-6 h-[60px]">
-        <h2 className="text-lg font-semibold text-white uppercase">
-          BOQ Guard
+      <SidebarHeader className="border-b border-gray-800 px-6 h-[60px] flex justify-center">
+        <h2 className="text-lg font-semibold uppercase flex items-center gap-2 text-primary italic">
+        <img src="/logo.svg" alt="logo" width={38} height={20}/>  BOQ Guard
         </h2>
       </SidebarHeader>
 
@@ -111,12 +111,12 @@ export function AppSidebar() {
 
       <SidebarFooter className="border-t border-gray-800 p-3">
         <div className="flex items-center gap-3 px-4 py-3 rounded bg-gray-800/50 hover:bg-gray-800 transition-colors cursor-pointer">
-          <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center shrink-0">
+          {/* <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center shrink-0">
             <span className="text-white font-semibold text-sm">U</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">User Name</p>
-            <p className="text-xs text-gray-400 truncate">user@example.com</p>
+          </div> */}
+          <div className="flex-1 min-w-0 flex items-center gap-3">
+            <p className="text-sm font-medium text-white truncate">Created by</p>
+            <p className="text-xs text-gray-400 truncate">Cautious N.</p>
           </div>
         </div>
       </SidebarFooter>

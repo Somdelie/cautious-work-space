@@ -1,5 +1,11 @@
-import { put } from "@vercel/blob";
+import { v2 as cloudinary } from "cloudinary";
 import { NextRequest, NextResponse } from "next/server";
+
+cloudinary.config({
+  cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 export async function POST(request: NextRequest) {
   try {
@@ -7,10 +13,7 @@ export async function POST(request: NextRequest) {
     const file = formData.get("file") as File;
 
     if (!file) {
-      return NextResponse.json(
-        { error: "No file provided" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
     const isImage = file.type.startsWith("image/");
@@ -37,12 +40,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const blob = await put(file.name, file, {
-      access: "public",
-      token: process.env.BLOB_READ_WRITE_TOKEN,
-    });
+    const buffer = await file.arrayBuffer();
+    const bytes = Buffer.from(buffer);
 
-    return NextResponse.json({ url: blob.url });
+    const result = (await new Promise((resolve, reject) => {
+      const upload = cloudinary.uploader.upload_stream(
+        {
+          resource_type: isPdf ? "raw" : "auto",
+          folder: "order-checks",
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+
+      upload.end(bytes);
+    })) as any;
+
+    return NextResponse.json({ url: result.secure_url });
   } catch (error) {
     console.error("Upload error:", error);
     return NextResponse.json(
@@ -51,6 +67,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-
-

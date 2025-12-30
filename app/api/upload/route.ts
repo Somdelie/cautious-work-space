@@ -36,6 +36,9 @@ try {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  console.log(`[${new Date().toISOString()}] Upload request received`);
+
   try {
     // Fail fast if Cloudinary credentials are missing in the deployed environment
     if (
@@ -52,12 +55,18 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json({ error: msg }, { status: 500 });
     }
+
+    console.log("Processing form data...");
     const formData = await request.formData();
     const file = formData.get("file") as File;
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
+
+    console.log(
+      `File received: ${file.name}, size: ${file.size}, type: ${file.type}`
+    );
 
     const isImage = file.type.startsWith("image/");
     const isPdf = file.type === "application/pdf";
@@ -83,47 +92,64 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log("Converting file to buffer...");
     const buffer = await file.arrayBuffer();
     const bytes = Buffer.from(buffer);
+    console.log(`Buffer size: ${bytes.length}`);
 
+    console.log("Starting Cloudinary upload...");
     const result = (await new Promise((resolve, reject) => {
-      const upload = cloudinary.uploader.upload_stream(
-        {
-          resource_type: isPdf ? "raw" : "auto",
-          folder: "order-checks",
-        },
-        (error, result) => {
-          if (error) {
-            try {
-              console.error(
-                "Cloudinary upload callback error:",
-                JSON.stringify(
-                  Object.getOwnPropertyNames(error).reduce(
-                    (acc, k) => ({ ...acc, [k]: error[k] }),
-                    {}
-                  ),
-                  null,
-                  2
-                )
-              );
-            } catch (e) {
-              console.error(
-                "Cloudinary upload callback error (stringify failed):",
-                error
-              );
+      try {
+        const upload = cloudinary.uploader.upload_stream(
+          {
+            resource_type: isPdf ? "raw" : "auto",
+            folder: "order-checks",
+          },
+          (error, result) => {
+            if (error) {
+              try {
+                console.error(
+                  "Cloudinary upload callback error:",
+                  JSON.stringify(
+                    Object.getOwnPropertyNames(error).reduce(
+                      (acc, k) => ({ ...acc, [k]: error[k] }),
+                      {}
+                    ),
+                    null,
+                    2
+                  )
+                );
+              } catch (e) {
+                console.error(
+                  "Cloudinary upload callback error (stringify failed):",
+                  error
+                );
+              }
+              reject(error);
+            } else {
+              console.log("Cloudinary upload completed successfully");
+              resolve(result);
             }
-            reject(error);
-          } else resolve(result);
-        }
-      );
+          }
+        );
 
-      upload.end(bytes);
+        console.log("Writing bytes to upload stream...");
+        upload.end(bytes);
+      } catch (streamError) {
+        console.error("Error creating upload stream:", streamError);
+        reject(streamError);
+      }
     })) as any;
 
     console.log("Cloudinary upload result:", result);
 
+    const duration = Date.now() - startTime;
+    console.log(`Upload completed successfully in ${duration}ms`);
     return NextResponse.json({ url: result.secure_url });
   } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`Upload failed after ${duration}ms`);
+
     // Log full error server-side for debugging and return comprehensive error info
     console.error("Upload error (full):", error);
 

@@ -5,6 +5,7 @@ import { CreateJobDialog } from "@/components/dialogs/create-job";
 import { CreateManagerDialog } from "@/components/dialogs/create-manager";
 import { CreateProductTypeDialog } from "@/components/dialogs/create-product";
 import { CreateSupplierDialog } from "@/components/dialogs/create-supplier";
+import { DownloadUserGuide } from "@/components/common/download-user-guide";
 import {
   Briefcase,
   Users,
@@ -21,7 +22,8 @@ export default async function DashboardPage() {
   const productTypes = await getProductTypes();
   const finishedJobs = await getFinishedJobs();
 
-  const totalJobs = jobsResult.success && jobsResult.data ? jobsResult.data.length : 0;
+  const totalJobs =
+    jobsResult.success && jobsResult.data ? jobsResult.data.length : 0;
 
   return (
     <div className="max-h-[90vh] bg-slate-950/40 overflow-y-auto">
@@ -219,6 +221,22 @@ export default async function DashboardPage() {
               </p>
               <CreateJobDialog />
             </div>
+          </div>
+        </div>
+
+        {/* User Guide Section */}
+        <div className="mt-6 bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-800/30 rounded-lg p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-100 mb-1">
+                Need Help?
+              </h3>
+              <p className="text-sm text-slate-400">
+                Download the complete user guide to learn how to use all
+                features of the Job Management System
+              </p>
+            </div>
+            <DownloadUserGuide />
           </div>
         </div>
       </div>

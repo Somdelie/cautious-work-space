@@ -37,6 +37,7 @@ export function EditSupplierDialog({
   const [name, setName] = useState("");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Load supplier data when supplierId changes
   useEffect(() => {
@@ -75,6 +76,7 @@ export function EditSupplierDialog({
       setName("");
       setLogoUrl(null);
       setLogoPreview(null);
+      setUploadError(null);
     }
   }, [open]);
 
@@ -93,6 +95,7 @@ export function EditSupplierDialog({
     }
 
     setUploading(true);
+    setUploadError(null);
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -104,19 +107,24 @@ export function EditSupplierDialog({
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Failed to upload image");
+        const errorMsg = error.error || "Failed to upload image";
+        const fullError = `${errorMsg}${error.debug ? '\n\nDebug: ' + JSON.stringify(error.debug, null, 2) : ''}`;
+        setUploadError(fullError);
+        throw new Error(errorMsg);
       }
 
       const data = await response.json();
       setLogoUrl(data.url);
       setLogoPreview(URL.createObjectURL(file));
+      setUploadError(null);
       toast.success("Logo uploaded successfully");
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to upload logo"
-      );
+      const msg = error instanceof Error ? error.message : "Failed to upload logo";
+      console.error("Upload error:", error);
+      toast.error(msg);
     } finally {
       setUploading(false);
+    }
     }
   };
 
@@ -182,6 +190,15 @@ export function EditSupplierDialog({
                 disabled={loading || uploading}
               />
             </div>
+            
+            {uploadError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm">
+                <p className="font-semibold text-red-800 mb-2">Upload Error Details:</p>
+                <pre className="text-red-700 whitespace-pre-wrap break-words text-xs max-h-32 overflow-y-auto font-mono">
+                  {uploadError}
+                </pre>
+              </div>
+            )}
             
             <div className="space-y-2">
               <Label>Supplier Logo</Label>

@@ -107,33 +107,43 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ url: result.secure_url });
   } catch (error) {
-    // Log full error server-side for debugging and return the message in the response
-    console.error("Upload error:", error);
+    // Log full error server-side for debugging and return comprehensive error info
+    console.error("Upload error (full):", error);
+
     let message = "Failed to upload file";
-    let details: string | undefined;
+    const debugInfo: Record<string, unknown> = {};
 
     if (error instanceof Error) {
       message = error.message || message;
-      details = JSON.stringify(
-        { name: error.name, stack: error.stack },
-        null,
-        2
-      );
-    } else if (typeof error === "object") {
+      debugInfo.name = error.name;
+      debugInfo.message = error.message;
+      debugInfo.stack = error.stack;
+      // @ts-ignore
+      debugInfo.http_code = error.http_code;
+    } else if (typeof error === "object" && error !== null) {
       try {
-        details = JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
-        // try to pull a message property if present
+        // Capture all enumerable properties
+        for (const key of Object.getOwnPropertyNames(error)) {
+          try {
+            // @ts-ignore
+            debugInfo[key] = error[key];
+          } catch {
+            // skip if property can't be accessed
+          }
+        }
         // @ts-ignore
-        if (error && error.message) message = String(error.message);
+        if (error.message) message = String(error.message);
       } catch (e) {
-        details = String(error);
+        debugInfo.stringifyError = String(error);
       }
     } else {
       message = String(error) || message;
     }
 
-    const payload: Record<string, unknown> = { error: message };
-    if (details) payload.details = details;
+    const payload: Record<string, unknown> = {
+      error: message,
+      debug: debugInfo,
+    };
 
     return NextResponse.json(payload, { status: 500 });
   }

@@ -29,6 +29,7 @@ export function CreateSupplierDialog({ onSuccess }: CreateSupplierDialogProps) {
   const [name, setName] = useState("");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -45,6 +46,7 @@ export function CreateSupplierDialog({ onSuccess }: CreateSupplierDialogProps) {
     }
 
     setUploading(true);
+    setUploadError(null);
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -56,17 +58,26 @@ export function CreateSupplierDialog({ onSuccess }: CreateSupplierDialogProps) {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Failed to upload image");
+        const errorMsg = error.error || "Failed to upload image";
+        const fullError = `${errorMsg}${
+          error.debug
+            ? "\n\nDebug: " + JSON.stringify(error.debug, null, 2)
+            : ""
+        }`;
+        setUploadError(fullError);
+        throw new Error(errorMsg);
       }
 
       const data = await response.json();
       setLogoUrl(data.url);
       setLogoPreview(URL.createObjectURL(file));
+      setUploadError(null);
       toast.success("Logo uploaded successfully");
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to upload logo"
-      );
+      const msg =
+        error instanceof Error ? error.message : "Failed to upload logo";
+      console.error("Upload error:", error);
+      toast.error(msg);
     } finally {
       setUploading(false);
     }
@@ -88,7 +99,10 @@ export function CreateSupplierDialog({ onSuccess }: CreateSupplierDialogProps) {
     setLoading(true);
 
     try {
-      await createSupplier({ name: name.trim(), logoUrl: logoUrl || undefined });
+      await createSupplier({
+        name: name.trim(),
+        logoUrl: logoUrl || undefined,
+      });
       toast.success("Supplier created successfully");
       setName("");
       setLogoUrl(null);
@@ -105,7 +119,15 @@ export function CreateSupplierDialog({ onSuccess }: CreateSupplierDialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(newOpen) => {
+        setOpen(newOpen);
+        if (!newOpen) {
+          setUploadError(null);
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button className="gap-2">
           <Plus className="size-4" /> Add New Supplier
@@ -126,7 +148,18 @@ export function CreateSupplierDialog({ onSuccess }: CreateSupplierDialogProps) {
               disabled={loading}
             />
           </div>
-          
+
+          {uploadError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm">
+              <p className="font-semibold text-red-800 mb-2">
+                Upload Error Details:
+              </p>
+              <pre className="text-red-700 whitespace-pre-wrap break-words text-xs max-h-32 overflow-y-auto font-mono">
+                {uploadError}
+              </pre>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label>Supplier Logo</Label>
             {logoPreview ? (
@@ -194,7 +227,11 @@ export function CreateSupplierDialog({ onSuccess }: CreateSupplierDialogProps) {
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading || uploading} className="gap-2">
+            <Button
+              type="submit"
+              disabled={loading || uploading}
+              className="gap-2"
+            >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
               {loading ? "Creating..." : "Create Supplier"}
             </Button>

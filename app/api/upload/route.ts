@@ -98,48 +98,14 @@ export async function POST(request: NextRequest) {
     console.log(`Buffer size: ${bytes.length}`);
 
     console.log("Starting Cloudinary upload...");
-    const result = (await new Promise((resolve, reject) => {
-      try {
-        const upload = cloudinary.uploader.upload_stream(
-          {
-            resource_type: isPdf ? "raw" : "auto",
-            folder: "order-checks",
-          },
-          (error, result) => {
-            if (error) {
-              try {
-                console.error(
-                  "Cloudinary upload callback error:",
-                  JSON.stringify(
-                    Object.getOwnPropertyNames(error).reduce(
-                      (acc, k) => ({ ...acc, [k]: error[k] }),
-                      {}
-                    ),
-                    null,
-                    2
-                  )
-                );
-              } catch (e) {
-                console.error(
-                  "Cloudinary upload callback error (stringify failed):",
-                  error
-                );
-              }
-              reject(error);
-            } else {
-              console.log("Cloudinary upload completed successfully");
-              resolve(result);
-            }
-          }
-        );
-
-        console.log("Writing bytes to upload stream...");
-        upload.end(bytes);
-      } catch (streamError) {
-        console.error("Error creating upload stream:", streamError);
-        reject(streamError);
+    // Use buffer-based upload instead of stream for better Vercel compatibility
+    const result = await cloudinary.uploader.upload(
+      `data:${file.type};base64,${bytes.toString("base64")}`,
+      {
+        resource_type: isPdf ? "raw" : "auto",
+        folder: "order-checks",
       }
-    })) as any;
+    );
 
     console.log("Cloudinary upload result:", result);
 

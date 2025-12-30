@@ -1,14 +1,38 @@
 import { v2 as cloudinary } from "cloudinary";
 import { NextRequest, NextResponse } from "next/server";
 
+const CLOUDINARY_CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY;
+const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET;
+
+// Basic presence checks to help debugging in deployed envs
+if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
+  console.error("Cloudinary environment variables missing or incomplete:", {
+    hasCloudName: !!CLOUDINARY_CLOUD_NAME,
+    hasApiKey: !!CLOUDINARY_API_KEY,
+    hasApiSecret: !!CLOUDINARY_API_SECRET,
+  });
+}
+
 cloudinary.config({
-  cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+  cloud_name: CLOUDINARY_CLOUD_NAME,
+  api_key: CLOUDINARY_API_KEY,
+  api_secret: CLOUDINARY_API_SECRET,
 });
 
 export async function POST(request: NextRequest) {
   try {
+    // Fail fast if Cloudinary credentials are missing in the deployed environment
+    if (
+      !CLOUDINARY_CLOUD_NAME ||
+      !CLOUDINARY_API_KEY ||
+      !CLOUDINARY_API_SECRET
+    ) {
+      const msg =
+        "Server misconfiguration: missing Cloudinary environment variables";
+      console.error(msg);
+      return NextResponse.json({ error: msg }, { status: 500 });
+    }
     const formData = await request.formData();
     const file = formData.get("file") as File;
 
@@ -60,9 +84,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ url: result.secure_url });
   } catch (error) {
+    // Log full error server-side for debugging and return the message in the response
     console.error("Upload error:", error);
+    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: "Failed to upload file" },
+      { error: message || "Failed to upload file" },
       { status: 500 }
     );
   }

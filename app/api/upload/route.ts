@@ -76,13 +76,34 @@ export async function POST(request: NextRequest) {
           folder: "order-checks",
         },
         (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
+          if (error) {
+            try {
+              console.error(
+                "Cloudinary upload callback error:",
+                JSON.stringify(
+                  Object.getOwnPropertyNames(error).reduce(
+                    (acc, k) => ({ ...acc, [k]: error[k] }),
+                    {}
+                  ),
+                  null,
+                  2
+                )
+              );
+            } catch (e) {
+              console.error(
+                "Cloudinary upload callback error (stringify failed):",
+                error
+              );
+            }
+            reject(error);
+          } else resolve(result);
         }
       );
 
       upload.end(bytes);
     })) as any;
+
+    console.log("Cloudinary upload result:", result);
 
     return NextResponse.json({ url: result.secure_url });
   } catch (error) {
@@ -93,7 +114,11 @@ export async function POST(request: NextRequest) {
 
     if (error instanceof Error) {
       message = error.message || message;
-      details = JSON.stringify({ name: error.name, stack: error.stack }, null, 2);
+      details = JSON.stringify(
+        { name: error.name, stack: error.stack },
+        null,
+        2
+      );
     } else if (typeof error === "object") {
       try {
         details = JSON.stringify(error, Object.getOwnPropertyNames(error), 2);

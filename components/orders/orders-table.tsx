@@ -8,10 +8,24 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { deleteOrder } from "@/actions/order";
 import { useState, useMemo } from "react";
-import { ChevronUp, ChevronDown, ChevronsUpDown, Search } from "lucide-react";
+import {
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown,
+  Search,
+  AlertTriangle,
+} from "lucide-react";
 
 interface OrderItem {
   id: string;
@@ -20,6 +34,7 @@ interface OrderItem {
   productType: {
     id: string;
     type: string;
+    shortcut: string;
   };
 }
 
@@ -44,6 +59,11 @@ export function OrdersTable({ orders, onOrderDeleted }: OrdersTableProps) {
   const [sortField, setSortField] = useState<SortField>("createdAt");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [searchQuery, setSearchQuery] = useState("");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [orderToDelete, setOrderToDelete] = useState<{
+    id: string;
+    orderNumber: string;
+  } | null>(null);
   const itemsPerPage = 5;
 
   const handleSort = (field: SortField) => {
@@ -110,12 +130,17 @@ export function OrdersTable({ orders, onOrderDeleted }: OrdersTableProps) {
     );
   };
 
-  const handleDelete = async (orderId: string) => {
-    if (!confirm("Are you sure you want to delete this order?")) return;
+  const handleDelete = (orderId: string, orderNumber: string) => {
+    setOrderToDelete({ id: orderId, orderNumber });
+    setDeleteConfirmOpen(true);
+  };
 
-    setDeleting(orderId);
+  const confirmDelete = async () => {
+    if (!orderToDelete) return;
+
+    setDeleting(orderToDelete.id);
     try {
-      const result = await deleteOrder(orderId);
+      const result = await deleteOrder(orderToDelete.id);
       if (result.success) {
         toast.success("Order deleted");
         onOrderDeleted?.();
@@ -126,6 +151,8 @@ export function OrdersTable({ orders, onOrderDeleted }: OrdersTableProps) {
       toast.error("Error deleting order");
     } finally {
       setDeleting(null);
+      setDeleteConfirmOpen(false);
+      setOrderToDelete(null);
     }
   };
 
@@ -189,8 +216,17 @@ export function OrdersTable({ orders, onOrderDeleted }: OrdersTableProps) {
                 <TableCell>
                   <div className="space-y-1 text-sm">
                     {order.items.map((item) => (
-                      <div key={item.id}>
-                        {item.quantity}x{item.unit} {item.productType.type}
+                      <div
+                        key={item.id}
+                        className="capitalize flex items-center gap-2"
+                      >
+                        {item.quantity}x{item.unit}{" "}
+                        <span className="font-medium lowercase text-muted-foreground flex items-center gap-1">
+                          {item.productType.type}{" "}
+                          <p className="text-teal-700 uppercase font-mono text-xs">
+                            ({item.productType.shortcut})
+                          </p>
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -203,7 +239,7 @@ export function OrdersTable({ orders, onOrderDeleted }: OrdersTableProps) {
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() => handleDelete(order.id)}
+                    onClick={() => handleDelete(order.id, order.orderNumber)}
                     disabled={deleting === order.id}
                   >
                     {deleting === order.id ? "..." : "Delete"}
@@ -245,6 +281,45 @@ export function OrdersTable({ orders, onOrderDeleted }: OrdersTableProps) {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Confirm Deletion
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete order{" "}
+              <span className="font-semibold">
+                {orderToDelete?.orderNumber}
+              </span>
+              ?
+              <br />
+              <span className="text-red-500">
+                This action cannot be undone.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteConfirmOpen(false)}
+              disabled={deleting !== null}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deleting !== null}
+            >
+              {deleting ? "Deleting..." : "Delete Order"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

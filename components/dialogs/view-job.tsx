@@ -87,6 +87,7 @@ type JobData = {
       productType: {
         id: string;
         type: string;
+        shortcut: string;
       };
     }>;
   }>;
@@ -460,7 +461,7 @@ export function ViewJobDialog({
                           <div className="text-sm font-medium text-slate-200">
                             {value.type}
                           </div>
-                          <div className="text-sm text-slate-300">
+                          <div className="text-sm text-slate-300 bg-amber-400/30 px-2 py-1 rounded font-mono">
                             {unitParts.join(", ")}
                           </div>
                         </div>

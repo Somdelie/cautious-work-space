@@ -86,10 +86,28 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     // Log full error server-side for debugging and return the message in the response
     console.error("Upload error:", error);
-    const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json(
-      { error: message || "Failed to upload file" },
-      { status: 500 }
-    );
+    let message = "Failed to upload file";
+    let details: string | undefined;
+
+    if (error instanceof Error) {
+      message = error.message || message;
+      details = JSON.stringify({ name: error.name, stack: error.stack }, null, 2);
+    } else if (typeof error === "object") {
+      try {
+        details = JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
+        // try to pull a message property if present
+        // @ts-ignore
+        if (error && error.message) message = String(error.message);
+      } catch (e) {
+        details = String(error);
+      }
+    } else {
+      message = String(error) || message;
+    }
+
+    const payload: Record<string, unknown> = { error: message };
+    if (details) payload.details = details;
+
+    return NextResponse.json(payload, { status: 500 });
   }
 }

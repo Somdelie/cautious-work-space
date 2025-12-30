@@ -3,11 +3,19 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const CLOUDINARY_CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY;
-const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET;
+// Temporary hardcoded for testing on Vercel
+const CLOUDINARY_CLOUD_NAME = "cautious";
+const CLOUDINARY_API_KEY = "418346945468562";
+const CLOUDINARY_API_SECRET = "x2RTKvgYx-RDoh5A2ac0thFqwz8";
 
 // Basic presence checks to help debugging in deployed envs
+console.log("Upload route initialized - checking Cloudinary config", {
+  hasCloudName: !!CLOUDINARY_CLOUD_NAME,
+  hasApiKey: !!CLOUDINARY_API_KEY,
+  hasApiSecret: !!CLOUDINARY_API_SECRET,
+  environment: process.env.NODE_ENV,
+});
+
 if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
   console.error("Cloudinary environment variables missing or incomplete:", {
     hasCloudName: !!CLOUDINARY_CLOUD_NAME,
@@ -22,6 +30,7 @@ try {
     api_key: CLOUDINARY_API_KEY,
     api_secret: CLOUDINARY_API_SECRET,
   });
+  console.log("Cloudinary configured successfully");
 } catch (configError) {
   console.error("Failed to configure Cloudinary:", configError);
 }
@@ -36,7 +45,11 @@ export async function POST(request: NextRequest) {
     ) {
       const msg =
         "Server misconfiguration: missing Cloudinary environment variables";
-      console.error(msg);
+      console.error("Upload endpoint called with missing Cloudinary config:", {
+        hasCloudName: !!CLOUDINARY_CLOUD_NAME,
+        hasApiKey: !!CLOUDINARY_API_KEY,
+        hasApiSecret: !!CLOUDINARY_API_SECRET,
+      });
       return NextResponse.json({ error: msg }, { status: 500 });
     }
     const formData = await request.formData();

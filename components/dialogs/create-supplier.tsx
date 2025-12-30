@@ -22,7 +22,9 @@ interface CreateSupplierDialogProps {
   onSuccess?: () => void;
 }
 
-export function CreateSupplierDialog({ onSuccess }: CreateSupplierDialogProps) {
+export function CreateSupplierDialog({
+  onSuccess,
+}: CreateSupplierDialogProps): React.ReactNode {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);

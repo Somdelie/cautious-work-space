@@ -30,7 +30,7 @@ export function EditSupplierDialog({
   open,
   onOpenChange,
   onSuccess,
-}: EditSupplierDialogProps) {
+}: EditSupplierDialogProps): React.ReactNode {
   const [loading, setLoading] = useState(false);
   const [loadingSupplier, setLoadingSupplier] = useState(false);
   const [uploading, setUploading] = useState(false);

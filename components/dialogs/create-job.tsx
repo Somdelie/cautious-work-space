@@ -46,6 +46,7 @@ interface Supplier {
 interface ProductType {
   id: string;
   type: string;
+  shortcut: string | null;
 }
 
 export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
@@ -54,7 +55,9 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
   const [managers, setManagers] = useState<Manager[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
-  const [selectedProductTypeIds, setSelectedProductTypeIds] = useState<string[]>([]);
+  const [selectedProductTypeIds, setSelectedProductTypeIds] = useState<
+    string[]
+  >([]);
   const [jobNumber, setJobNumber] = useState("");
   const [siteName, setSiteName] = useState("");
   const [managerId, setManagerId] = useState("");
@@ -147,7 +150,10 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
         siteName,
         managerId,
         supplierId,
-        productTypeIds: selectedProductTypeIds.length > 0 ? selectedProductTypeIds : undefined,
+        productTypeIds:
+          selectedProductTypeIds.length > 0
+            ? selectedProductTypeIds
+            : undefined,
         specPdfUrl: specPdfUrl ?? undefined,
         boqPdfUrl: boqPdfUrl ?? undefined,
       });
@@ -297,16 +303,26 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
               <div className="border rounded-md p-4 max-h-48 overflow-y-auto space-y-3">
                 {productTypes.length > 0 ? (
                   productTypes.map((productType) => (
-                    <div key={productType.id} className="flex items-center space-x-2">
+                    <div
+                      key={productType.id}
+                      className="flex items-center space-x-2"
+                    >
                       <Checkbox
                         id={`product-type-${productType.id}`}
-                        checked={selectedProductTypeIds.includes(productType.id)}
+                        checked={selectedProductTypeIds.includes(
+                          productType.id
+                        )}
                         onCheckedChange={(checked) => {
                           if (checked) {
-                            setSelectedProductTypeIds([...selectedProductTypeIds, productType.id]);
+                            setSelectedProductTypeIds([
+                              ...selectedProductTypeIds,
+                              productType.id,
+                            ]);
                           } else {
                             setSelectedProductTypeIds(
-                              selectedProductTypeIds.filter((id) => id !== productType.id)
+                              selectedProductTypeIds.filter(
+                                (id) => id !== productType.id
+                              )
                             );
                           }
                         }}
@@ -316,7 +332,10 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
                         htmlFor={`product-type-${productType.id}`}
                         className="text-sm font-normal cursor-pointer flex-1"
                       >
-                        {productType.type}
+                        {productType.type}{" "}
+                        <span className="text-xs text-rose-500">
+                          ({productType.shortcut || "No shortcut"})
+                        </span>
                       </Label>
                     </div>
                   ))
@@ -372,10 +391,14 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
                       accept="application/pdf"
                       className="hidden"
                       onChange={(e) =>
-                        handlePdfUpload(e, (url, name) => {
-                          setSpecPdfUrl(url);
-                          setSpecFileName(name);
-                        }, setSpecUploading)
+                        handlePdfUpload(
+                          e,
+                          (url, name) => {
+                            setSpecPdfUrl(url);
+                            setSpecFileName(name);
+                          },
+                          setSpecUploading
+                        )
                       }
                       disabled={loading || specUploading}
                     />
@@ -429,10 +452,14 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
                       accept="application/pdf"
                       className="hidden"
                       onChange={(e) =>
-                        handlePdfUpload(e, (url, name) => {
-                          setBoqPdfUrl(url);
-                          setBoqFileName(name);
-                        }, setBoqUploading)
+                        handlePdfUpload(
+                          e,
+                          (url, name) => {
+                            setBoqPdfUrl(url);
+                            setBoqFileName(name);
+                          },
+                          setBoqUploading
+                        )
                       }
                       disabled={loading || boqUploading}
                     />

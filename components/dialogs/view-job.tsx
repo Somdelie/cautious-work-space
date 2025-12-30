@@ -29,6 +29,8 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { getJobById } from "@/actions/job";
+import { CreateOrder } from "./create-order";
+import { OrdersTable } from "@/components/orders/orders-table";
 
 interface ViewJobDialogProps {
   jobId: string | null;
@@ -71,6 +73,20 @@ type JobData = {
       type: string;
     };
   }>;
+  orders?: Array<{
+    id: string;
+    orderNumber: string;
+    createdAt: Date | string;
+    items: Array<{
+      id: string;
+      quantity: number;
+      unit: string;
+      productType: {
+        id: string;
+        type: string;
+      };
+    }>;
+  }>;
 };
 
 export function ViewJobDialog({
@@ -96,10 +112,10 @@ export function ViewJobDialog({
       if (result.success && result.data) {
         const jobData = result.data as JobData;
         // Convert date strings to Date objects if needed
-        if (jobData.startedAt && typeof jobData.startedAt === 'string') {
+        if (jobData.startedAt && typeof jobData.startedAt === "string") {
           jobData.startedAt = new Date(jobData.startedAt);
         }
-        if (jobData.finishedAt && typeof jobData.finishedAt === 'string') {
+        if (jobData.finishedAt && typeof jobData.finishedAt === "string") {
           jobData.finishedAt = new Date(jobData.finishedAt);
         }
         setJob(jobData);
@@ -115,18 +131,18 @@ export function ViewJobDialog({
 
   useEffect(() => {
     fetchJob();
-    
+
     // Refetch when window regains focus (e.g., after marking job as started in another tab/modal)
     const handleFocus = () => {
       if (jobId && open) {
         fetchJob();
       }
     };
-    
-    window.addEventListener('focus', handleFocus);
-    
+
+    window.addEventListener("focus", handleFocus);
+
     return () => {
-      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [jobId, open]);
 
@@ -166,7 +182,9 @@ export function ViewJobDialog({
                 className="h-8 w-8 p-0 text-slate-400 hover:text-slate-100"
                 title="Refresh job details"
               >
-                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                <RefreshCw
+                  className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+                />
               </Button>
             </div>
           </div>
@@ -289,8 +307,17 @@ export function ViewJobDialog({
                           </p>
                         </div>
                       </div>
-                      <Button asChild variant="outline" size="sm" className="gap-1">
-                        <a href={job.specPdfUrl} target="_blank" rel="noopener noreferrer">
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="sm"
+                        className="gap-1"
+                      >
+                        <a
+                          href={job.specPdfUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
                           <ExternalLink className="h-4 w-4" />
                           Open
                         </a>
@@ -310,14 +337,88 @@ export function ViewJobDialog({
                           </p>
                         </div>
                       </div>
-                      <Button asChild variant="outline" size="sm" className="gap-1">
-                        <a href={job.boqPdfUrl} target="_blank" rel="noopener noreferrer">
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="sm"
+                        className="gap-1"
+                      >
+                        <a
+                          href={job.boqPdfUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
                           <ExternalLink className="h-4 w-4" />
                           Open
                         </a>
                       </Button>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Ordered Totals Section */}
+            {job.orders && job.orders.length > 0 && (
+              <div className="bg-slate-800/50 border border-slate-700 rounded p-4">
+                <h3 className="text-base font-semibold mb-3 text-slate-100 flex items-center gap-2">
+                  <div className="h-8 w-8 bg-emerald-500/10 rounded flex items-center justify-center">
+                    <Package className="h-4 w-4 text-emerald-400" />
+                  </div>
+                  Ordered Totals
+                  <span className="text-xs font-normal text-slate-400 ml-auto">
+                    Aggregated across all orders
+                  </span>
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/** compute totals per productType and unit */}
+                  {(() => {
+                    const totals = new Map();
+                    job.orders.forEach((o) =>
+                      o.items.forEach((it) => {
+                        const ptId = it.productType.id;
+                        if (!totals.has(ptId)) {
+                          totals.set(ptId, {
+                            type: it.productType.type,
+                            byUnit: new Map(),
+                          });
+                        }
+                        const entry = totals.get(ptId);
+                        const unit = it.unit || "";
+                        const prev = entry.byUnit.get(unit) || 0;
+                        entry.byUnit.set(unit, prev + Number(it.quantity));
+                      })
+                    );
+
+                    const rows: React.ReactElement[] = [];
+                    totals.forEach((value, key) => {
+                      const unitParts: string[] = [];
+                      value.byUnit.forEach((sum: number, unit: string) => {
+                        unitParts.push(`${sum}${unit ? " " + unit : ""}`);
+                      });
+                      rows.push(
+                        <div
+                          key={key}
+                          className="flex items-center justify-between bg-slate-900/30 border border-slate-700 rounded px-3 py-2"
+                        >
+                          <div className="text-sm font-medium text-slate-200">
+                            {value.type}
+                          </div>
+                          <div className="text-sm text-slate-300">
+                            {unitParts.join(", ")}
+                          </div>
+                        </div>
+                      );
+                    });
+
+                    return rows.length > 0 ? (
+                      rows
+                    ) : (
+                      <div className="text-sm text-slate-400">
+                        No ordered totals available
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}
@@ -473,6 +574,31 @@ export function ViewJobDialog({
                     </table>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Orders Section */}
+            {job.orders && (
+              <div className="bg-slate-800/50 border border-slate-700 rounded p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-semibold text-slate-100 flex items-center gap-2">
+                    <div className="h-8 w-8 bg-indigo-500/10 rounded flex items-center justify-center">
+                      <Package className="h-4 w-4 text-indigo-400" />
+                    </div>
+                    Orders
+                    <span className="text-xs font-normal text-slate-400">
+                      {job.orders.length}{" "}
+                      {job.orders.length === 1 ? "order" : "orders"}
+                    </span>
+                  </h3>
+                  <CreateOrder
+                    jobId={job.id}
+                    jobNumber={job.jobNumber}
+                    productTypes={job.productTypes}
+                    onOrderCreated={fetchJob}
+                  />
+                </div>
+                <OrdersTable orders={job.orders} onOrderDeleted={fetchJob} />
               </div>
             )}
 

@@ -1,7 +1,6 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
 
 export async function createOrder(
   orderNumber: string,
@@ -30,36 +29,34 @@ export async function createOrder(
   }
 
   try {
-    const order = await prisma.$transaction(
-      async (tx: Prisma.TransactionClient) => {
-        const o = await tx.order.create({
-          data: {
-            orderNumber,
-            jobId,
-          },
-        });
+    const order = await prisma.$transaction(async (tx) => {
+      const o = await tx.order.create({
+        data: {
+          orderNumber,
+          jobId,
+        },
+      });
 
-        // Use createMany for efficient insertion of multiple items
-        await tx.orderItem.createMany({
-          data: validItems.map((it) => ({
-            orderId: o.id,
-            productTypeId: it.productTypeId,
-            quantity: it.quantity,
-            unit: it.unit,
-          })),
-        });
+      // Use createMany for efficient insertion of multiple items
+      await tx.orderItem.createMany({
+        data: validItems.map((it) => ({
+          orderId: o.id,
+          productTypeId: it.productTypeId,
+          quantity: it.quantity,
+          unit: it.unit,
+        })),
+      });
 
-        // Re-fetch the order with items and productType relations
-        const created = await tx.order.findUnique({
-          where: { id: o.id },
-          include: {
-            items: { include: { productType: true } },
-          },
-        });
+      // Re-fetch the order with items and productType relations
+      const created = await tx.order.findUnique({
+        where: { id: o.id },
+        include: {
+          items: { include: { productType: true } },
+        },
+      });
 
-        return created;
-      }
-    );
+      return created;
+    });
 
     return { success: true, data: order };
   } catch (error) {

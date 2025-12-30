@@ -49,6 +49,7 @@ interface Supplier {
 interface ProductType {
   id: string;
   type: string;
+  shortcut: string | null;
 }
 
 export function EditJobDialog({
@@ -64,7 +65,9 @@ export function EditJobDialog({
   const [managers, setManagers] = useState<Manager[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
-  const [selectedProductTypeIds, setSelectedProductTypeIds] = useState<string[]>([]);
+  const [selectedProductTypeIds, setSelectedProductTypeIds] = useState<
+    string[]
+  >([]);
   const [jobNumber, setJobNumber] = useState("");
   const [siteName, setSiteName] = useState("");
   const [managerId, setManagerId] = useState("");
@@ -117,14 +120,20 @@ export function EditJobDialog({
           setSupplierId(job.supplierId);
           setSpecPdfUrl(job.specPdfUrl || null);
           setBoqPdfUrl(job.boqPdfUrl || null);
-          setSpecFileName(job.specPdfUrl ? job.specPdfUrl.split("/").pop() ?? null : null);
-          setBoqFileName(job.boqPdfUrl ? job.boqPdfUrl.split("/").pop() ?? null : null);
+          setSpecFileName(
+            job.specPdfUrl ? job.specPdfUrl.split("/").pop() ?? null : null
+          );
+          setBoqFileName(
+            job.boqPdfUrl ? job.boqPdfUrl.split("/").pop() ?? null : null
+          );
           setIsStarted(job.isStarted || false);
           setIsFinished(job.isFinished || false);
-          
+
           // Set selected product types
           if (job.productTypes) {
-            setSelectedProductTypeIds(job.productTypes.map((pt: { id: string }) => pt.id));
+            setSelectedProductTypeIds(
+              job.productTypes.map((pt: { id: string }) => pt.id)
+            );
           }
         } else {
           toast.error("Failed to load job data");
@@ -317,7 +326,10 @@ export function EditJobDialog({
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-4">
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-4 max-h-[70vh] overflow-y-auto pr-4"
+          >
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-job-number">Job Number *</Label>
@@ -380,10 +392,15 @@ export function EditJobDialog({
                 <div className="border rounded-md p-4 max-h-48 overflow-y-auto space-y-3">
                   {productTypes.length > 0 ? (
                     productTypes.map((productType) => (
-                      <div key={productType.id} className="flex items-center space-x-2">
+                      <div
+                        key={productType.id}
+                        className="flex items-center space-x-2"
+                      >
                         <Checkbox
                           id={`edit-product-type-${productType.id}`}
-                          checked={selectedProductTypeIds.includes(productType.id)}
+                          checked={selectedProductTypeIds.includes(
+                            productType.id
+                          )}
                           onCheckedChange={(checked) => {
                             if (checked) {
                               setSelectedProductTypeIds([
@@ -404,7 +421,10 @@ export function EditJobDialog({
                           htmlFor={`edit-product-type-${productType.id}`}
                           className="text-sm font-normal cursor-pointer flex-1"
                         >
-                          {productType.type}
+                          {productType.type}{" "}
+                          <span className="text-xs text-rose-500">
+                            ({productType.shortcut || "No shortcut"})
+                          </span>
                         </Label>
                       </div>
                     ))
@@ -586,7 +606,11 @@ export function EditJobDialog({
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={loading || markingFinished} className="gap-2">
+                <Button
+                  type="submit"
+                  disabled={loading || markingFinished}
+                  className="gap-2"
+                >
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                   Update Job
                 </Button>
@@ -598,5 +622,3 @@ export function EditJobDialog({
     </Dialog>
   );
 }
-
-

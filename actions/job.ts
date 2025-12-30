@@ -163,6 +163,18 @@ export async function getJobById(id: string) {
             productType: true,
           },
         },
+        orders: {
+          include: {
+            items: {
+              include: {
+                productType: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
       },
     });
     return { success: true, data: job };

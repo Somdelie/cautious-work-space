@@ -394,7 +394,10 @@ export function ViewJobDialog({
                     totals.forEach((value, key) => {
                       const unitParts: string[] = [];
                       value.byUnit.forEach((sum: number, unit: string) => {
-                        unitParts.push(`${sum}${unit ? " " + unit : ""}`);
+                        const trimmedUnit = unit.trim();
+                        unitParts.push(
+                          `${sum}${trimmedUnit ? "x" + trimmedUnit : ""}`
+                        );
                       });
                       rows.push(
                         <div

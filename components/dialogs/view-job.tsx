@@ -29,8 +29,11 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { getJobById } from "@/actions/job";
+import { generateJobOrderPDF } from "@/actions/pdf-export";
 import { CreateOrder } from "./create-order";
 import { OrdersTable } from "@/components/orders/orders-table";
+import { toast } from "sonner";
+import { Download } from "lucide-react";
 
 interface ViewJobDialogProps {
   jobId: string | null;
@@ -97,6 +100,7 @@ export function ViewJobDialog({
   const [loading, setLoading] = useState(false);
   const [job, setJob] = useState<JobData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
   const fetchJob = async () => {
     if (!jobId || !open) {
@@ -126,6 +130,43 @@ export function ViewJobDialog({
       setError("An unexpected error occurred");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!jobId) return;
+
+    setDownloading(true);
+    try {
+      const result = await generateJobOrderPDF(jobId);
+      if (result.success) {
+        // Create blob from base64
+        const byteCharacters = atob(result.data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: "application/pdf" });
+
+        // Create download link
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = result.filename || "job-orders.pdf";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+        toast.success("PDF downloaded successfully");
+      } else {
+        toast.error(result.error);
+      }
+    } catch (err) {
+      toast.error(`Error downloading PDF: ${(err as Error).message}`);
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -174,6 +215,18 @@ export function ViewJobDialog({
                   Finished
                 </Badge>
               )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleDownloadPDF}
+                disabled={downloading || !job}
+                className="h-8 w-8 p-0 text-slate-400 hover:text-slate-100"
+                title="Download PDF"
+              >
+                <Download
+                  className={`h-4 w-4 ${downloading ? "animate-spin" : ""}`}
+                />
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"

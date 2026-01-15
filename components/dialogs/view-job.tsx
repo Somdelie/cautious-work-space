@@ -27,6 +27,7 @@ import {
   RefreshCw,
   FileText,
   ExternalLink,
+  X,
 } from "lucide-react";
 import { getJobById } from "@/actions/job";
 import { generateJobOrderPDF } from "@/actions/pdf-export";

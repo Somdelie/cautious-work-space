@@ -47,6 +47,7 @@ interface ProductType {
   id: string;
   type: string;
   shortcut: string | null;
+  usageType: "INTERNAL" | "EXTERNAL" | "BOTH";
 }
 
 export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
@@ -60,6 +61,7 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
   >([]);
   const [jobNumber, setJobNumber] = useState("");
   const [siteName, setSiteName] = useState("");
+  const [client, setClient] = useState("");
   const [managerId, setManagerId] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [specPdfUrl, setSpecPdfUrl] = useState<string | null>(null);
@@ -100,6 +102,7 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
       setBoqFileName(null);
       setSpecUploading(false);
       setBoqUploading(false);
+      setClient("");
     }
   }, [open]);
 
@@ -148,6 +151,7 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
       const result = await createJob({
         jobNumber,
         siteName,
+        client,
         managerId,
         supplierId,
         productTypeIds:
@@ -165,6 +169,7 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
         setManagerId("");
         setSupplierId("");
         setSelectedProductTypeIds([]);
+        setClient("");
         setOpen(false);
         onSuccess?.();
       } else {
@@ -233,14 +238,17 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
           Create Job
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[475px]">
+      <DialogContent className="sm:max-w-[575px]">
         <DialogHeader>
           <DialogTitle>Create New Job</DialogTitle>
           <DialogDescription>
             Create a new job and assign it to a manager and supplier
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-4 max-h-[70vh] overflow-y-auto py-2 pr-3"
+        >
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="job-number">Job Number *</Label>
@@ -262,6 +270,16 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
                 disabled={loading}
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="client">Client / Company Name</Label>
+            <Input
+              id="client"
+              placeholder="e.g., Acme Corp."
+              value={client}
+              onChange={(e) => setClient(e.target.value)}
+              disabled={loading}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -302,43 +320,57 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
               <Label>Product Types</Label>
               <div className="border rounded-md p-4 max-h-48 overflow-y-auto space-y-3">
                 {productTypes.length > 0 ? (
-                  productTypes.map((productType) => (
-                    <div
-                      key={productType.id}
-                      className="flex items-center space-x-2"
-                    >
-                      <Checkbox
-                        id={`product-type-${productType.id}`}
-                        checked={selectedProductTypeIds.includes(
-                          productType.id
-                        )}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedProductTypeIds([
-                              ...selectedProductTypeIds,
-                              productType.id,
-                            ]);
-                          } else {
-                            setSelectedProductTypeIds(
-                              selectedProductTypeIds.filter(
-                                (id) => id !== productType.id
-                              )
-                            );
-                          }
-                        }}
-                        disabled={loading}
-                      />
-                      <Label
-                        htmlFor={`product-type-${productType.id}`}
-                        className="text-sm font-normal cursor-pointer flex-1"
+                  productTypes
+                    .filter((productType) => {
+                      // Example: filter by usageType
+                      // You can add a UI control to select context (internal/external) and filter accordingly
+                      // For now, show all
+                      return true;
+                    })
+                    .map((productType) => (
+                      <div
+                        key={productType.id}
+                        className="flex items-center space-x-2"
                       >
-                        {productType.type}{" "}
-                        <span className="text-xs text-rose-500">
-                          ({productType.shortcut || "No shortcut"})
-                        </span>
-                      </Label>
-                    </div>
-                  ))
+                        <Checkbox
+                          id={`product-type-${productType.id}`}
+                          checked={selectedProductTypeIds.includes(
+                            productType.id
+                          )}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedProductTypeIds([
+                                ...selectedProductTypeIds,
+                                productType.id,
+                              ]);
+                            } else {
+                              setSelectedProductTypeIds(
+                                selectedProductTypeIds.filter(
+                                  (id) => id !== productType.id
+                                )
+                              );
+                            }
+                          }}
+                          disabled={loading}
+                        />
+                        <Label
+                          htmlFor={`product-type-${productType.id}`}
+                          className="text-sm font-normal cursor-pointer flex-1"
+                        >
+                          {productType.type}{" "}
+                          <span className="text-xs text-rose-500">
+                            ({productType.shortcut || "No shortcut"})
+                          </span>
+                          <span className="text-xs ml-2 text-blue-500">
+                            {productType.usageType === "BOTH"
+                              ? "Internal & External"
+                              : productType.usageType === "INTERNAL"
+                              ? "Internal Only"
+                              : "External Only"}
+                          </span>
+                        </Label>
+                      </div>
+                    ))
                 ) : (
                   <p className="text-sm text-muted-foreground">
                     No product types available for this supplier

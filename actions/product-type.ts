@@ -7,6 +7,7 @@ export async function createProductType(data: {
   type: string;
   shortcut?: string;
   supplierId: string;
+  usageType?: "INTERNAL" | "EXTERNAL" | "BOTH";
 }) {
   try {
     const productType = await prisma.productType.create({
@@ -14,6 +15,7 @@ export async function createProductType(data: {
         type: data.type,
         shortcut: data.shortcut || "",
         supplierId: data.supplierId,
+        usageType: data.usageType || "BOTH",
       },
       include: {
         supplier: true,
@@ -38,7 +40,12 @@ export async function getProductTypes(supplierId?: string) {
         type: "asc",
       },
     });
-    return { success: true, data: productTypes };
+    // Ensure usageType is present in returned objects
+    const withUsageType = productTypes.map((pt) => ({
+      ...pt,
+      usageType: pt.usageType || "BOTH",
+    }));
+    return { success: true, data: withUsageType };
   } catch (error) {
     return { success: false, error: "Failed to fetch product types" };
   }

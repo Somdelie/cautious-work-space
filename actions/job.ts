@@ -110,6 +110,7 @@ export async function getJobsByManagerId(managerId: string) {
 export async function createJob(data: {
   jobNumber: string;
   siteName: string;
+  client?: string;
   managerId: string;
   supplierId: string;
   productTypeIds?: string[];
@@ -121,6 +122,7 @@ export async function createJob(data: {
       data: {
         jobNumber: data.jobNumber,
         siteName: data.siteName,
+        client: data.client,
         managerId: data.managerId,
         supplierId: data.supplierId,
         specPdfUrl: data.specPdfUrl,
@@ -188,6 +190,7 @@ export async function updateJob(
   data: {
     jobNumber?: string;
     siteName?: string;
+    client?: string;
     managerId?: string;
     supplierId?: string;
     productTypeIds?: string[];
@@ -199,6 +202,7 @@ export async function updateJob(
     const updateData: {
       jobNumber?: string;
       siteName?: string;
+      client?: string;
       managerId?: string;
       supplierId?: string;
       productTypes?: { set: Array<{ id: string }> };
@@ -207,6 +211,7 @@ export async function updateJob(
     } = {
       jobNumber: data.jobNumber,
       siteName: data.siteName,
+      client: data.client,
       managerId: data.managerId,
       supplierId: data.supplierId,
       specPdfUrl: data.specPdfUrl,

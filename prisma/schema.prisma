@@ -29,8 +29,14 @@ model ProductType {
   supplier    Supplier     @relation(fields: [supplierId], references: [id])
   jobProducts JobProduct[]
   orderItems  OrderItem[]
+  usageType   UsageType    @default(BOTH)
+  jobs        Job[]
+}
 
-  jobs Job[]
+enum UsageType {
+  INTERNAL
+  EXTERNAL
+  BOTH
 }
 
 model Manager {
@@ -51,6 +57,7 @@ model Job {
   boqPdfUrl    String?
   manager      Manager       @relation(fields: [managerId], references: [id])
   supplier     Supplier      @relation(fields: [supplierId], references: [id])
+  client       String?
   jobProducts  JobProduct[]
   productTypes ProductType[]
   orders       Order[]

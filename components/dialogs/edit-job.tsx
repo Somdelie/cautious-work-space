@@ -70,6 +70,7 @@ export function EditJobDialog({
   >([]);
   const [jobNumber, setJobNumber] = useState("");
   const [siteName, setSiteName] = useState("");
+  const [client, setClient] = useState("");
   const [managerId, setManagerId] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [specPdfUrl, setSpecPdfUrl] = useState<string | null>(null);
@@ -116,6 +117,7 @@ export function EditJobDialog({
           const job = result.data;
           setJobNumber(job.jobNumber);
           setSiteName(job.siteName);
+          setClient(job.client || "");
           setManagerId(job.managerId);
           setSupplierId(job.supplierId);
           setSpecPdfUrl(job.specPdfUrl || null);
@@ -185,6 +187,7 @@ export function EditJobDialog({
       setBoqFileName(null);
       setSpecUploading(false);
       setBoqUploading(false);
+      setClient("");
     }
   }, [open]);
 
@@ -288,6 +291,7 @@ export function EditJobDialog({
       const result = await updateJob(jobId, {
         jobNumber,
         siteName,
+        client,
         managerId,
         supplierId,
         productTypeIds: selectedProductTypeIds,
@@ -351,6 +355,16 @@ export function EditJobDialog({
                   disabled={loading}
                 />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-client">Client / Company Name</Label>
+              <Input
+                id="edit-client"
+                placeholder="e.g., Acme Corp."
+                value={client}
+                onChange={(e) => setClient(e.target.value)}
+                disabled={loading}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">

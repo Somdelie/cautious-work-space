@@ -45,6 +45,7 @@ type JobData = {
   id: string;
   jobNumber: string;
   siteName: string;
+  client?: string | null;
   isStarted: boolean;
   isFinished: boolean;
   startedAt: Date | null;
@@ -266,7 +267,7 @@ export function ViewJobDialog({
                 <Hash className="h-4 w-4 text-blue-400" />
                 Basic Information
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label className="text-xs font-medium text-slate-400 mb-1 block">
                     Job Number
@@ -282,6 +283,15 @@ export function ViewJobDialog({
                   </label>
                   <p className="text-sm font-mono font-medium text-slate-100 bg-slate-900/50 px-2 py-1.5 rounded border border-slate-700">
                     {job.siteName}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-400 mb-1 flex items-center gap-1">
+                    <Building2 className="h-3 w-3" />
+                    Client / Company
+                  </label>
+                  <p className="text-sm font-mono font-medium text-slate-100 bg-slate-900/50 px-2 py-1.5 rounded border border-slate-700">
+                    {job.client || <span className="text-slate-500">—</span>}
                   </p>
                 </div>
                 <div>
@@ -361,21 +371,48 @@ export function ViewJobDialog({
                           </p>
                         </div>
                       </div>
-                      <Button
-                        asChild
-                        variant="outline"
-                        size="sm"
-                        className="gap-1"
-                      >
-                        <a
-                          href={job.specPdfUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                      <div className="flex gap-2">
+                        <Button
+                          asChild
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
                         >
-                          <ExternalLink className="h-4 w-4" />
-                          Open
-                        </a>
-                      </Button>
+                          <a
+                            href={job.specPdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            Open
+                          </a>
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="gap-1"
+                          title="Delete Spec Attachment"
+                          onClick={async () => {
+                            // Remove spec attachment from job
+                            const res = await fetch("/api/job/attachment", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                jobId: job.id,
+                                field: "specPdfUrl",
+                              }),
+                            });
+                            if (res.ok) {
+                              toast.success("Spec attachment deleted");
+                              window.location.reload();
+                            } else {
+                              toast.error("Failed to delete spec attachment");
+                            }
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   )}
                   {job.boqPdfUrl && (
@@ -391,21 +428,48 @@ export function ViewJobDialog({
                           </p>
                         </div>
                       </div>
-                      <Button
-                        asChild
-                        variant="outline"
-                        size="sm"
-                        className="gap-1"
-                      >
-                        <a
-                          href={job.boqPdfUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                      <div className="flex gap-2">
+                        <Button
+                          asChild
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
                         >
-                          <ExternalLink className="h-4 w-4" />
-                          Open
-                        </a>
-                      </Button>
+                          <a
+                            href={job.boqPdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            Open
+                          </a>
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="gap-1"
+                          title="Delete BOQ Attachment"
+                          onClick={async () => {
+                            // Remove BOQ attachment from job
+                            const res = await fetch("/api/job/attachment", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                jobId: job.id,
+                                field: "boqPdfUrl",
+                              }),
+                            });
+                            if (res.ok) {
+                              toast.success("BOQ attachment deleted");
+                              window.location.reload();
+                            } else {
+                              toast.error("Failed to delete BOQ attachment");
+                            }
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>

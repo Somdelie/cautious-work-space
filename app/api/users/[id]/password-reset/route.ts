@@ -7,9 +7,12 @@ import crypto from "crypto";
 
 type Params = { id: string };
 
-export async function POST(_req: NextRequest, ctx: { params: Params }) {
-  // Next.js route handler: params is a plain object
-  const params = ctx.params;
+export async function POST(
+  _req: NextRequest,
+  ctx: { params: Promise<Params> },
+) {
+  // Next.js route handler: params is a Promise
+  const params = await ctx.params;
 
   const session = await getServerSession(authOptions);
   if (!session) {

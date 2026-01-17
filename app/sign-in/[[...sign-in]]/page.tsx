@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { useSignIn } from "@clerk/nextjs";
+import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,8 +10,6 @@ import { Loader2, Mail, Lock } from "lucide-react";
 import { toast } from "sonner";
 
 export default function SignInPage() {
-  const { signIn, setActive, isLoaded } = useSignIn();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -19,54 +17,30 @@ export default function SignInPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isLoaded) return;
-
     setIsLoading(true);
     setErrorMessage("");
-
     try {
-      // STEP 1 — Start sign-in
-      let result = await signIn.create({
-        identifier: email,
+      const res = await signIn("credentials", {
+        redirect: false,
+        email,
         password,
       });
-
-      // Clerk sometimes starts with "needs_first_factor"
-      if (result.status === "needs_first_factor") {
-        result = await signIn.attemptFirstFactor({
-          strategy: "password",
-          password,
-        });
-      }
-
-      // STEP 2 — Handle second factor (should not happen if MFA is disabled)
-      if (result.status === "needs_second_factor") {
-        setErrorMessage(
-          "Two-factor authentication is required. Please disable MFA in Clerk Dashboard or contact support."
-        );
-        toast.error("2FA is required but not supported in this flow");
-        return;
-      }
-
-      // STEP 3 — Final completion
-      if (result.status === "complete") {
-        await setActive({ session: result.createdSessionId });
+      if (res?.ok) {
         toast.success("Welcome back!");
         window.location.href = "/";
-        return;
+      } else {
+        let message = res?.error;
+        if (message === "CredentialsSignin") {
+          message = "Invalid email or password.";
+        } else if (!message) {
+          message = "Unable to sign in. Please try again.";
+        }
+        setErrorMessage(message);
+        toast.error(message);
       }
-
-      // Anything else = unexpected
-      setErrorMessage(`Unexpected sign-in status: ${result.status}`);
-      toast.error("Could not complete sign-in");
     } catch (err: any) {
-      const msg =
-        err?.errors?.[0]?.longMessage ||
-        err?.errors?.[0]?.message ||
-        "Invalid email or password";
-
-      setErrorMessage(msg);
-      toast.error(msg);
+      setErrorMessage("Something went wrong");
+      toast.error("Something went wrong");
     } finally {
       setIsLoading(false);
     }

@@ -1,3 +1,17 @@
+model User {
+  id       String  @id @default(cuid())
+  name     String
+  phone    String
+  email    String  @unique
+  password String
+  role     String  @default("user")
+  blocked  Boolean @default(false)
+
+  // ✅ Password reset / change code
+  passwordResetCodeHash  String?
+  passwordResetExpiresAt DateTime?
+}
+
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 

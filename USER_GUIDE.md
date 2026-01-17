@@ -1,3 +1,5 @@
+3. Enter your credentials (the app uses email/password authentication)
+
 # Job Management System - User Guide
 
 ## Table of Contents
@@ -54,14 +56,12 @@ After signing in, you'll see the main navigation sidebar with the following sect
 ### Core Features
 
 1. **Job Management**
-
    - Create, view, edit, and delete jobs
    - Track job status (Not Started, In Progress, Finished)
    - Associate jobs with managers and suppliers
    - Assign product types to jobs
 
 2. **Order Management**
-
    - Create orders for specific jobs
    - Add multiple product items to orders
    - Search and filter orders
@@ -70,20 +70,17 @@ After signing in, you'll see the main navigation sidebar with the following sect
    - Delete orders when needed
 
 3. **Product Type Management**
-
    - Add product types with shortcuts
    - Associate products with suppliers
    - Edit and delete product types
 
 4. **Supplier Management**
-
    - Add supplier information
    - Upload supplier logos
    - Edit supplier details
    - Delete suppliers
 
 5. **Manager Management**
-
    - Add manager contact information
    - Store phone and email details
    - Edit and delete managers

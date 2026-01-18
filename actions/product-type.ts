@@ -72,7 +72,12 @@ export async function getProductTypeById(id: string) {
 
 export async function updateProductType(
   id: string,
-  data: { type?: string; shortcut?: string; supplierId?: string }
+  data: {
+    type?: string;
+    shortcut?: string;
+    supplierId?: string;
+    usageType?: "INTERNAL" | "EXTERNAL" | "BOTH";
+  },
 ) {
   try {
     const productType = await prisma.productType.update({
@@ -81,6 +86,7 @@ export async function updateProductType(
         type: data.type,
         shortcut: data.shortcut,
         supplierId: data.supplierId,
+        usageType: data.usageType,
       },
       include: {
         supplier: true,

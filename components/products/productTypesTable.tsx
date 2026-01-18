@@ -35,6 +35,7 @@ type ProductType = {
   type: string;
   shortcut: string | null;
   supplierId: string;
+  usageType?: "INTERNAL" | "EXTERNAL" | "BOTH";
 };
 
 type Supplier = {
@@ -48,6 +49,13 @@ type ProductTypeWithSupplier = ProductType & {
 };
 
 type SortKey = keyof ProductTypeWithSupplier | "supplierName";
+// Helper to display usageType nicely
+function displayUsageTypeShort(usageType?: string) {
+  if (!usageType || usageType === "BOTH") return "Ext/Int";
+  if (usageType === "INTERNAL") return "Int";
+  if (usageType === "EXTERNAL") return "Ext";
+  return usageType;
+}
 
 export function ProductTypesTable({
   productTypes,
@@ -79,7 +87,7 @@ export function ProductTypesTable({
           .includes(searchTerm.toLowerCase()) ||
         productType.supplier?.name
           .toLowerCase()
-          .includes(searchTerm.toLowerCase())
+          .includes(searchTerm.toLowerCase()),
     );
 
     filtered.sort((a, b) => {
@@ -104,7 +112,7 @@ export function ProductTypesTable({
   }, [productTypes, searchTerm, sortColumn, sortDirection]);
 
   const totalPages = Math.ceil(
-    filteredAndSortedProductTypes.length / itemsPerPage
+    filteredAndSortedProductTypes.length / itemsPerPage,
   );
   const paginatedProductTypes = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
@@ -142,11 +150,10 @@ export function ProductTypesTable({
         <CreateProductTypeDialog />
       </div>
       <Table className="w-full table-fixed rounded overflow-hidden">
-        {/* <TableCaption>A list of your recent product types.</TableCaption> */}
         <TableHeader className="w-full bg-slate-800/80">
           <TableRow className="w-full">
             <TableHead
-              className="w-[25%] font-semibold cursor-pointer"
+              className="w-[15%] font-semibold cursor-pointer"
               onClick={() => handleSort("shortcut")}
             >
               <div className="flex items-center">
@@ -155,7 +162,7 @@ export function ProductTypesTable({
               </div>
             </TableHead>
             <TableHead
-              className="w-[25%] font-semibold cursor-pointer"
+              className="w-[20%] font-semibold cursor-pointer"
               onClick={() => handleSort("type")}
             >
               <div className="flex items-center">
@@ -164,7 +171,7 @@ export function ProductTypesTable({
               </div>
             </TableHead>
             <TableHead
-              className="w-[25%] font-semibold cursor-pointer"
+              className="w-[20%] font-semibold cursor-pointer"
               onClick={() => handleSort("supplierName")}
             >
               <div className="flex items-center">
@@ -172,7 +179,8 @@ export function ProductTypesTable({
                 <ArrowUpDown className="ml-2 h-4 w-4" />
               </div>
             </TableHead>
-            <TableHead className="w-[25%] text-right font-semibold" colSpan={2}>
+            <TableHead className="w-[15%] font-semibold">Ext/Int</TableHead>
+            <TableHead className="w-[30%] text-right font-semibold" colSpan={2}>
               Actions
             </TableHead>
           </TableRow>
@@ -187,13 +195,16 @@ export function ProductTypesTable({
                 <TableCell className="w-[15%]">
                   {productType.shortcut || "-"}
                 </TableCell>
-                <TableCell className="w-[30%] font-medium">
+                <TableCell className="w-[20%] font-medium">
                   {productType.type}
                 </TableCell>
-                <TableCell className="w-[30%]">
+                <TableCell className="w-[20%]">
                   {productType.supplier?.name || "-"}
                 </TableCell>
-                <TableCell className="w-[25%] text-right" colSpan={2}>
+                <TableCell className="w-[15%]">
+                  {displayUsageTypeShort(productType.usageType)}
+                </TableCell>
+                <TableCell className="w-[30%] text-right" colSpan={2}>
                   <div className="flex gap-2 justify-end">
                     <Button
                       variant="outline"
@@ -224,7 +235,7 @@ export function ProductTypesTable({
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={5} className="h-24 text-center">
+              <TableCell colSpan={6} className="h-24 text-center">
                 No product types found.
               </TableCell>
             </TableRow>
@@ -232,7 +243,7 @@ export function ProductTypesTable({
         </TableBody>
         <TableFooter>
           <TableRow>
-            <TableCell colSpan={4}>Total Displayed</TableCell>
+            <TableCell colSpan={5}>Total Displayed</TableCell>
             <TableCell className="text-center">
               {paginatedProductTypes.length}
             </TableCell>

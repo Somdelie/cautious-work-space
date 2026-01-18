@@ -46,8 +46,9 @@ export function CreateProductTypeDialog({
   const [type, setType] = useState("");
   const [shortcut, setShortcut] = useState("");
   const [selectedSupplierId, setSelectedSupplierId] = useState(
-    supplierId || ""
+    supplierId || "",
   );
+  const [usage, setUsage] = useState("");
 
   useEffect(() => {
     const fetchSuppliers = async () => {
@@ -66,11 +67,19 @@ export function CreateProductTypeDialog({
       toast.error("Please enter a product type");
       return;
     }
-
     if (!selectedSupplierId) {
       toast.error("Please select a supplier");
       return;
     }
+    if (!usage) {
+      toast.error("Please select product usage");
+      return;
+    }
+    // Map UI value to backend value
+    let usageType: "INTERNAL" | "EXTERNAL" | "BOTH";
+    if (usage === "internal") usageType = "INTERNAL";
+    else if (usage === "external") usageType = "EXTERNAL";
+    else usageType = "BOTH";
 
     setLoading(true);
     try {
@@ -78,6 +87,7 @@ export function CreateProductTypeDialog({
         type,
         shortcut: shortcut || undefined,
         supplierId: selectedSupplierId,
+        usageType,
       });
 
       if (result.success) {
@@ -85,6 +95,7 @@ export function CreateProductTypeDialog({
         setType("");
         setShortcut("");
         setSelectedSupplierId(supplierId || "");
+        setUsage("");
         setOpen(false);
         onSuccess?.();
       } else {
@@ -92,7 +103,7 @@ export function CreateProductTypeDialog({
       }
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "An unexpected error occurred"
+        error instanceof Error ? error.message : "An unexpected error occurred",
       );
     } finally {
       setLoading(false);
@@ -150,6 +161,19 @@ export function CreateProductTypeDialog({
                     {supplier.name}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="usage-select">Product Usage *</Label>
+            <Select value={usage} onValueChange={setUsage} disabled={loading}>
+              <SelectTrigger id="usage-select">
+                <SelectValue placeholder="Select usage" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="external">External</SelectItem>
+                <SelectItem value="internal">Internal</SelectItem>
+                <SelectItem value="both">Both</SelectItem>
               </SelectContent>
             </Select>
           </div>

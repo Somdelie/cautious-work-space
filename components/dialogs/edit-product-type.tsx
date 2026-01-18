@@ -50,6 +50,7 @@ export function EditProductTypeDialog({
   const [type, setType] = useState("");
   const [shortcut, setShortcut] = useState("");
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
+  const [usage, setUsage] = useState("");
 
   // Load suppliers when dialog opens
   useEffect(() => {
@@ -80,6 +81,7 @@ export function EditProductTypeDialog({
           setType(productType.type);
           setShortcut(productType.shortcut || "");
           setSelectedSupplierId(productType.supplierId);
+          setUsage(productType.usage || "");
         } else {
           toast.error("Failed to load product type data");
           onOpenChange(false);
@@ -101,6 +103,7 @@ export function EditProductTypeDialog({
       setType("");
       setShortcut("");
       setSelectedSupplierId("");
+      setUsage("");
     }
   }, [open]);
 
@@ -113,11 +116,19 @@ export function EditProductTypeDialog({
       toast.error("Please enter a product type");
       return;
     }
-
     if (!selectedSupplierId) {
       toast.error("Please select a supplier");
       return;
     }
+    if (!usage) {
+      toast.error("Please select product usage");
+      return;
+    }
+    // Map UI value to backend value
+    let usageType: "INTERNAL" | "EXTERNAL" | "BOTH";
+    if (usage === "internal") usageType = "INTERNAL";
+    else if (usage === "external") usageType = "EXTERNAL";
+    else usageType = "BOTH";
 
     setLoading(true);
     try {
@@ -125,6 +136,7 @@ export function EditProductTypeDialog({
         type,
         shortcut: shortcut || undefined,
         supplierId: selectedSupplierId,
+        usageType,
       });
 
       if (result.success) {
@@ -136,7 +148,7 @@ export function EditProductTypeDialog({
       }
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "An unexpected error occurred"
+        error instanceof Error ? error.message : "An unexpected error occurred",
       );
     } finally {
       setLoading(false);
@@ -192,6 +204,19 @@ export function EditProductTypeDialog({
                       {supplier.name}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-usage-select">Product Usage *</Label>
+              <Select value={usage} onValueChange={setUsage} disabled={loading}>
+                <SelectTrigger id="edit-usage-select">
+                  <SelectValue placeholder="Select usage" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="external">External</SelectItem>
+                  <SelectItem value="internal">Internal</SelectItem>
+                  <SelectItem value="both">Both</SelectItem>
                 </SelectContent>
               </Select>
             </div>

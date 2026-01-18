@@ -1,6 +1,18 @@
-import { Resend } from "resend";
+// src/lib/mail.ts
+import nodemailer from "nodemailer";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const host = process.env.SMTP_HOST!;
+const port = Number(process.env.SMTP_PORT || 587);
+const user = process.env.SMTP_USER!;
+const pass = process.env.SMTP_PASS!;
+const from = process.env.MAIL_FROM!;
+
+export const transporter = nodemailer.createTransport({
+  host,
+  port,
+  secure: port === 465, // 465 = SSL, 587 = STARTTLS
+  auth: { user, pass },
+});
 
 export async function sendMail({
   to,
@@ -13,18 +25,17 @@ export async function sendMail({
   text?: string;
   html?: string;
 }) {
-  // Resend API expects 'html' or 'react', not 'text', and not template unless using templates.
-  let htmlContent = html;
-  if (!htmlContent && text) {
-    htmlContent = `<pre>${text}</pre>`;
-  }
+  if (!to) throw new Error("Missing recipient 'to'");
+  if (!subject) throw new Error("Missing 'subject'");
+  if (!text && !html) throw new Error("Provide 'text' or 'html'");
 
-  console.log(resend);
-  // Only pass the fields Resend expects for a basic email
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  const info = await transporter.sendMail({
+    from,
     to,
     subject,
-    html: htmlContent || "",
-  } as any);
+    text,
+    html,
+  });
+
+  return info; // nodemailer info object (messageId, response, etc.)
 }

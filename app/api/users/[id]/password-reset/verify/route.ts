@@ -1,16 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import crypto from "crypto";
 import bcrypt from "bcryptjs";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => null);
+  const session = await getServerSession(authOptions);
+  if (!session || session.user?.role !== "superadmin") {
+    return NextResponse.json(
+      { error: "Only admin can change passwords." },
+      { status: 403 },
+    );
+  }
 
-  const email = body?.email?.toLowerCase?.();
+  const body = await req.json().catch(() => null);
   const code = body?.code;
   const newPassword = body?.newPassword;
+  const userId = req.nextUrl.pathname.split("/").slice(-3)[0];
 
-  if (!email || !code || !newPassword) {
+  if (!userId || !code || !newPassword) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
@@ -21,46 +29,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  if (code !== "19021994") {
+    return NextResponse.json({ error: "Invalid admin code." }, { status: 400 });
+  }
+
   const user = await prisma.user.findUnique({
-    where: { email },
-    select: {
-      id: true,
-      passwordResetCodeHash: true,
-      passwordResetExpiresAt: true,
-      blocked: true,
-    },
+    where: { id: userId },
+    select: { id: true, blocked: true },
   });
-
-  // Always return generic error to avoid leaking which emails exist
   if (!user || user.blocked) {
-    return NextResponse.json({ error: "Invalid code" }, { status: 400 });
-  }
-
-  if (!user.passwordResetCodeHash || !user.passwordResetExpiresAt) {
-    return NextResponse.json({ error: "Invalid code" }, { status: 400 });
-  }
-
-  if (user.passwordResetExpiresAt.getTime() < Date.now()) {
-    return NextResponse.json({ error: "Code expired" }, { status: 400 });
-  }
-
-  const codeHash = crypto
-    .createHash("sha256")
-    .update(String(code))
-    .digest("hex");
-  if (codeHash !== user.passwordResetCodeHash) {
-    return NextResponse.json({ error: "Invalid code" }, { status: 400 });
+    return NextResponse.json(
+      { error: "User not found or blocked" },
+      { status: 404 },
+    );
   }
 
   const hashedPassword = await bcrypt.hash(newPassword, 12);
-
   await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      password: hashedPassword,
-      passwordResetCodeHash: null,
-      passwordResetExpiresAt: null,
-    },
+    where: { id: userId },
+    data: { password: hashedPassword },
   });
 
   return NextResponse.json({ ok: true });

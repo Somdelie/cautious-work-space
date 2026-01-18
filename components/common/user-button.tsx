@@ -53,7 +53,17 @@ export function AppUserButton() {
           </p>
         </div>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/sign-in" })}>
+        <DropdownMenuItem
+          onClick={async () => {
+            await signOut({ redirect: false });
+            // Clear cookies (NextAuth should do this, but force for edge cases)
+            document.cookie =
+              "next-auth.session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            document.cookie =
+              "next-auth.callback-url=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            window.location.href = "/sign-in";
+          }}
+        >
           Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>

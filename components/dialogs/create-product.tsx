@@ -129,7 +129,10 @@ export function CreateProductTypeDialog({
             Add a new product type to a supplier
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-4 max-h-[70vh] overflow-y-auto pr-2"
+        >
           <div className="space-y-2">
             <Label htmlFor="shortcut">Shortcut</Label>
             <Input

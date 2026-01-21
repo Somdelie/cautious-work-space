@@ -48,7 +48,8 @@ export function CreateProductTypeDialog({
   const [selectedSupplierId, setSelectedSupplierId] = useState(
     supplierId || "",
   );
-  const [price, setPrice] = useState(0);
+  const [price5L, setPrice5L] = useState(0);
+  const [price20L, setPrice20L] = useState(0);
   const [usage, setUsage] = useState("");
 
   useEffect(() => {
@@ -86,7 +87,8 @@ export function CreateProductTypeDialog({
         type,
         shortcut: shortcut || undefined,
         supplierId: selectedSupplierId,
-        price,
+        price5L,
+        price20L,
         usageType,
       });
 
@@ -95,7 +97,8 @@ export function CreateProductTypeDialog({
         setType("");
         setShortcut("");
         setSelectedSupplierId(supplierId || "");
-        setPrice(0);
+        setPrice5L(0);
+        setPrice20L(0);
         setUsage("");
         setOpen(false);
         onSuccess?.();
@@ -147,18 +150,30 @@ export function CreateProductTypeDialog({
               disabled={loading}
             />
           </div>
-          {/* product type price  */}
           <div className="space-y-2">
-            <Label htmlFor="price">Price per Unit *</Label>
+            <Label htmlFor="price20L">Price per 20 Litres</Label>
             <Input
-              id="price"
-              placeholder="e.g., 20.00"
+              id="price20L"
               type="number"
               min={0}
               step={0.01}
-              value={price}
-              onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
+              value={price20L}
+              onChange={(e) => setPrice20L(parseFloat(e.target.value) || 0)}
               disabled={loading}
+              placeholder="e.g., 100.00"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="price5L">Price per 5 Litres</Label>
+            <Input
+              id="price5L"
+              type="number"
+              min={0}
+              step={0.01}
+              value={price5L}
+              onChange={(e) => setPrice5L(parseFloat(e.target.value) || 0)}
+              disabled={loading}
+              placeholder="e.g., 30.00"
             />
           </div>
           <div className="space-y-2">

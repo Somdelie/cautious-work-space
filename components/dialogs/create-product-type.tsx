@@ -31,6 +31,9 @@ interface CreateProductTypeDialogProps {
   onSuccess?: () => void;
 }
 
+// Add price to state
+// ...existing code...
+
 interface Supplier {
   id: string;
   name: string;
@@ -49,6 +52,8 @@ export function CreateProductTypeDialog({
     supplierId || "",
   );
   const [usage, setUsage] = useState("");
+  const [price5L, setPrice5L] = useState(0);
+  const [price20L, setPrice20L] = useState(0);
 
   useEffect(() => {
     const fetchSuppliers = async () => {
@@ -88,6 +93,8 @@ export function CreateProductTypeDialog({
         shortcut: shortcut || undefined,
         supplierId: selectedSupplierId,
         usageType,
+        price5L,
+        price20L,
       });
 
       if (result.success) {
@@ -96,6 +103,8 @@ export function CreateProductTypeDialog({
         setShortcut("");
         setSelectedSupplierId(supplierId || "");
         setUsage("");
+        setPrice5L(0);
+        setPrice20L(0);
         setOpen(false);
         onSuccess?.();
       } else {
@@ -176,6 +185,32 @@ export function CreateProductTypeDialog({
                 <SelectItem value="both">Both</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="price20L">Price per 20 Litres</Label>
+            <Input
+              id="price20L"
+              type="number"
+              min={0}
+              step={0.01}
+              value={price20L}
+              onChange={(e) => setPrice20L(parseFloat(e.target.value) || 0)}
+              disabled={loading}
+              placeholder="e.g., 100.00"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="price5L">Price per 5 Litres</Label>
+            <Input
+              id="price5L"
+              type="number"
+              min={0}
+              step={0.01}
+              value={price5L}
+              onChange={(e) => setPrice5L(parseFloat(e.target.value) || 0)}
+              disabled={loading}
+              placeholder="e.g., 30.00"
+            />
           </div>
           <div className="flex gap-2 justify-end">
             <Button

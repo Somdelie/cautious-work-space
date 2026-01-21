@@ -46,8 +46,10 @@ export function CreateProductTypeDialog({
   const [type, setType] = useState("");
   const [shortcut, setShortcut] = useState("");
   const [selectedSupplierId, setSelectedSupplierId] = useState(
-    supplierId || ""
+    supplierId || "",
   );
+  const [price, setPrice] = useState(0);
+  const [usage, setUsage] = useState("");
 
   useEffect(() => {
     const fetchSuppliers = async () => {
@@ -74,10 +76,18 @@ export function CreateProductTypeDialog({
 
     setLoading(true);
     try {
+      // Map UI value to backend value if provided
+      let usageType: "INTERNAL" | "EXTERNAL" | "BOTH" | undefined = undefined;
+      if (usage === "internal") usageType = "INTERNAL";
+      else if (usage === "external") usageType = "EXTERNAL";
+      else if (usage === "both") usageType = "BOTH";
+
       const result = await createProductType({
         type,
         shortcut: shortcut || undefined,
         supplierId: selectedSupplierId,
+        price,
+        usageType,
       });
 
       if (result.success) {
@@ -85,6 +95,8 @@ export function CreateProductTypeDialog({
         setType("");
         setShortcut("");
         setSelectedSupplierId(supplierId || "");
+        setPrice(0);
+        setUsage("");
         setOpen(false);
         onSuccess?.();
       } else {
@@ -92,7 +104,7 @@ export function CreateProductTypeDialog({
       }
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "An unexpected error occurred"
+        error instanceof Error ? error.message : "An unexpected error occurred",
       );
     } finally {
       setLoading(false);
@@ -116,16 +128,6 @@ export function CreateProductTypeDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="product-type">Product Type *</Label>
-            <Input
-              id="product-type"
-              placeholder="e.g., Velvaglo - Water-based"
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-          <div className="space-y-2">
             <Label htmlFor="shortcut">Shortcut</Label>
             <Input
               id="shortcut"
@@ -134,6 +136,43 @@ export function CreateProductTypeDialog({
               onChange={(e) => setShortcut(e.target.value)}
               disabled={loading}
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="product-type">Product Name *</Label>
+            <Input
+              id="product-type"
+              placeholder="e.g., Velvaglo - Water-based"
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              disabled={loading}
+            />
+          </div>
+          {/* product type price  */}
+          <div className="space-y-2">
+            <Label htmlFor="price">Price per Unit *</Label>
+            <Input
+              id="price"
+              placeholder="e.g., 20.00"
+              type="number"
+              min={0}
+              step={0.01}
+              value={price}
+              onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
+              disabled={loading}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="usage-select">Product Usage</Label>
+            <Select value={usage} onValueChange={setUsage} disabled={loading}>
+              <SelectTrigger id="usage-select">
+                <SelectValue placeholder="Select usage (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="external">External</SelectItem>
+                <SelectItem value="internal">Internal</SelectItem>
+                <SelectItem value="both">Both</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="supplier-select">Supplier *</Label>

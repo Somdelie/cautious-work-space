@@ -3,15 +3,9 @@
 
 import { useMemo, useState } from "react";
 import {
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
   type ColumnDef,
-  type ColumnFiltersState,
   type SortingState,
+  type ColumnFiltersState,
   type VisibilityState,
 } from "@tanstack/react-table";
 import {
@@ -35,15 +29,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable } from "@/components/ui/data-table";
 import {
   Select,
   SelectContent,
@@ -223,7 +209,9 @@ export function JobsDataTable({ jobs }: { jobs: Job[] }) {
           const manager = row.original.manager;
           return (
             <div>
-              <div className="font-medium capitalize text-orange-600">{manager.name}</div>
+              <div className="font-medium capitalize text-orange-600">
+                {manager.name}
+              </div>
               {manager.email && (
                 <div className="text-xs text-muted-foreground lowercase">
                   {manager.email}
@@ -377,167 +365,16 @@ export function JobsDataTable({ jobs }: { jobs: Job[] }) {
         },
       },
     ],
-    []
+    [],
   );
 
-  // React Compiler warning: TanStack Table's useReactTable returns functions that can't be memoized.
-  // This is expected - the compiler will skip memoization for this hook (correct behavior).
-  const table = useReactTable({
-    data,
-    columns,
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onColumnVisibilityChange: setColumnVisibility,
-    onGlobalFilterChange: setGlobalFilter,
-    globalFilterFn: "includesString",
-    state: {
-      sorting,
-      columnFilters,
-      columnVisibility,
-      globalFilter,
-    },
-    initialState: {
-      pagination: {
-        pageSize: 10,
-      },
-    },
-  });
-
   return (
-    <div className="w-full space-y-4">
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div className="relative flex-1 max-w-sm w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search jobs..."
-            value={globalFilter ?? ""}
-            onChange={(event) => setGlobalFilter(event.target.value)}
-            className="pl-9 bg-card border-border"
-          />
-        </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-          <Select
-            value={
-              (table.getColumn("supplierName")?.getFilterValue() as string) ?? // Change here
-              "all"
-            }
-            onValueChange={
-              (value) =>
-                table
-                  .getColumn("supplierName")
-                  ?.setFilterValue(value === "all" ? "" : value) // And here
-            }
-          >
-            <SelectTrigger className="w-full sm:w-[180px] bg-card border-border">
-              <Filter className="mr-2 h-4 w-4" />
-              <SelectValue placeholder="All Suppliers" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Suppliers</SelectItem>
-              {Array.from(new Set(data.map((job) => job.supplier.name))).map(
-                (supplier) => (
-                  <SelectItem key={supplier} value={supplier}>
-                    {supplier}
-                  </SelectItem>
-                )
-              )}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="rounded border border-border bg-gray-900/40 overflow-hidden">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow
-                key={headerGroup.id}
-                className="border-border hover:bg-transparent"
-              >
-                {headerGroup.headers.map((header) => {
-                  return (
-                    <TableHead
-                      key={header.id}
-                      className="text-muted-foreground font-semibold"
-                    >
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
-                    </TableHead>
-                  );
-                })}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                  className="border-border hover:bg-accent/50"
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center text-muted-foreground"
-                >
-                  No jobs found.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="text-sm text-muted-foreground">
-          Showing {table.getFilteredRowModel().rows.length} of {data.length}{" "}
-          jobs
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-            className="border-border"
-          >
-            Previous
-          </Button>
-          <div className="text-sm text-muted-foreground">
-            Page {table.getState().pagination.pageIndex + 1} of{" "}
-            {table.getPageCount()}
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-            className="border-border"
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+    <>
+      <DataTable
+        data={data}
+        columns={columns}
+        globalFilterPlaceholder="Search jobs..."
+      />
 
       <ViewJobDialog
         jobId={selectedJobId}
@@ -569,6 +406,6 @@ export function JobsDataTable({ jobs }: { jobs: Job[] }) {
           window.location.reload();
         }}
       />
-    </div>
+    </>
   );
 }

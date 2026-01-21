@@ -45,6 +45,9 @@ model ProductType {
   orderItems  OrderItem[]
   usageType   UsageType    @default(BOTH)
   jobs        Job[]
+  price       Float        @default(0)
+  price5L     Float        @default(0)
+  price20L    Float        @default(0)
 }
 
 enum UsageType {

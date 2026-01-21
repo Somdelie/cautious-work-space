@@ -1,6 +1,7 @@
 "use client";
-
 import { useState, useMemo } from "react";
+import { DataTable } from "@/components/ui/data-table";
+import { type ColumnDef } from "@tanstack/react-table";
 import {
   Table,
   TableBody,
@@ -10,8 +11,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Pencil,
   Trash,
@@ -28,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CreateProductTypeDialog } from "../dialogs/create-product";
+import { CreateProductTypeDialog } from "@/components/dialogs/create-product";
 
 type ProductType = {
   id: string;
@@ -36,6 +37,9 @@ type ProductType = {
   shortcut: string | null;
   supplierId: string;
   usageType?: "INTERNAL" | "EXTERNAL" | "BOTH";
+  price5L?: number;
+  price20L?: number;
+  price?: number;
 };
 
 type Supplier = {
@@ -49,15 +53,16 @@ type ProductTypeWithSupplier = ProductType & {
 };
 
 type SortKey = keyof ProductTypeWithSupplier | "supplierName";
-// Helper to display usageType nicely
+
 function displayUsageTypeShort(usageType?: string) {
-  if (!usageType || usageType === "BOTH") return "Ext/Int";
+  if (!usageType) return null;
+  if (usageType === "BOTH") return "Ext/Int";
   if (usageType === "INTERNAL") return "Int";
   if (usageType === "EXTERNAL") return "Ext";
   return usageType;
 }
 
-export function ProductTypesTable({
+export default function ProductTypesTable({
   productTypes,
 }: {
   productTypes: ProductTypeWithSupplier[];
@@ -72,247 +77,128 @@ export function ProductTypesTable({
     name: string;
   } | null>(null);
 
-  const [searchTerm, setSearchTerm] = useState("");
-  const [sortColumn, setSortColumn] = useState<SortKey>("type");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
-
-  const filteredAndSortedProductTypes = useMemo(() => {
-    const filtered = productTypes.filter(
-      (productType) =>
-        productType.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        productType.shortcut
-          ?.toLowerCase()
-          .includes(searchTerm.toLowerCase()) ||
-        productType.supplier?.name
-          .toLowerCase()
-          .includes(searchTerm.toLowerCase()),
-    );
-
-    filtered.sort((a, b) => {
-      const aValue =
-        sortColumn === "supplierName" ? a.supplier?.name : a[sortColumn];
-      const bValue =
-        sortColumn === "supplierName" ? b.supplier?.name : b[sortColumn];
-
-      if (typeof aValue === "string" && typeof bValue === "string") {
-        return sortDirection === "asc"
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue);
-      }
-      if (aValue === null || aValue === undefined)
-        return sortDirection === "asc" ? 1 : -1;
-      if (bValue === null || bValue === undefined)
-        return sortDirection === "asc" ? -1 : 1;
-      return 0;
-    });
-
-    return filtered;
-  }, [productTypes, searchTerm, sortColumn, sortDirection]);
-
-  const totalPages = Math.ceil(
-    filteredAndSortedProductTypes.length / itemsPerPage,
+  const columns = useMemo<ColumnDef<ProductTypeWithSupplier>[]>(
+    () => [
+      {
+        accessorKey: "shortcut",
+        header: () => <span className="font-semibold">Shortcut</span>,
+        cell: ({ row }) => row.original.shortcut || "-",
+      },
+      {
+        accessorKey: "type",
+        header: () => <span className="font-semibold">Name</span>,
+        cell: ({ row }) => (
+          <span
+            className="block max-w-[220px] truncate"
+            title={row.original.type}
+          >
+            {row.original.type}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "supplier.name",
+        header: () => <span className="font-semibold">Supplier</span>,
+        cell: ({ row }) => row.original.supplier?.name || "-",
+      },
+      {
+        id: "usageType",
+        header: () => <span className="font-semibold">Ext/Int</span>,
+        cell: ({ row }) =>
+          displayUsageTypeShort(row.original.usageType) ? (
+            <span className="inline-flex items-center rounded-full bg-blue-100/80 dark:bg-blue-900/50 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300 backdrop-blur-sm">
+              {displayUsageTypeShort(row.original.usageType)}
+            </span>
+          ) : (
+            <span className="text-gray-400">-</span>
+          ),
+      },
+      {
+        id: "price20L",
+        header: () => <span className="font-semibold">Price 20L</span>,
+        cell: ({ row }) =>
+          typeof row.original.price20L === "number" &&
+          row.original.price20L !== 0 ? (
+            <span className="font-semibold text-base text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/40 px-2 py-1 rounded">
+              ${row.original.price20L.toFixed(2)}
+            </span>
+          ) : typeof row.original.price === "number" &&
+            row.original.price !== 0 ? (
+            <span className="font-semibold text-base text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/40 px-2 py-1 rounded">
+              ${row.original.price.toFixed(2)}
+            </span>
+          ) : (
+            <span className="text-red-500 italic">Missing</span>
+          ),
+      },
+      {
+        id: "price5L",
+        header: () => <span className="font-semibold">Price 5L</span>,
+        cell: ({ row }) =>
+          typeof row.original.price5L === "number" &&
+          row.original.price5L !== 0 ? (
+            <span className="font-semibold text-base text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/40 px-2 py-1 rounded">
+              ${row.original.price5L.toFixed(2)}
+            </span>
+          ) : (
+            <span className="text-red-500 italic">Missing</span>
+          ),
+      },
+      {
+        id: "actions",
+        header: () => <span className="font-semibold">Actions</span>,
+        cell: ({ row }) => (
+          <div className="flex items-center justify-end gap-2 px-2 py-1 rounded">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 bg-blue-100 text-blue-700 hover:bg-blue-200 hover:text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/60"
+              onClick={() => {
+                setSelectedProductTypeId(row.original.id);
+                setEditDialogOpen(true);
+              }}
+            >
+              <Pencil className="h-4 w-4" />
+              <span className="sr-only">Edit</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 bg-red-100 text-red-700 hover:bg-red-200 hover:text-red-800 dark:bg-red-900/40 dark:text-red-300 dark:hover:bg-red-900/60"
+              onClick={() => {
+                setProductTypeToDelete({
+                  id: row.original.id,
+                  name: row.original.type,
+                });
+                setDeleteDialogOpen(true);
+              }}
+            >
+              <Trash className="h-4 w-4" />
+              <span className="sr-only">Delete</span>
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [],
   );
-  const paginatedProductTypes = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return filteredAndSortedProductTypes.slice(startIndex, endIndex);
-  }, [filteredAndSortedProductTypes, currentPage, itemsPerPage]);
-
-  const handleSort = (column: SortKey) => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-    } else {
-      setSortColumn(column);
-      setSortDirection("asc");
-    }
-  };
-
-  const handlePageChange = (page: number) => {
-    if (page >= 1 && page <= totalPages) {
-      setCurrentPage(page);
-    }
-  };
 
   return (
     <>
-      <div className="flex items-center justify-between py-4">
-        <Input
-          placeholder="Search product types..."
-          value={searchTerm}
-          onChange={(e) => {
-            setSearchTerm(e.target.value);
-            setCurrentPage(1); // Reset to first page on search
-          }}
-          className="max-w-sm"
-        />
-        <CreateProductTypeDialog />
-      </div>
-      <Table className="w-full table-fixed rounded overflow-hidden">
-        <TableHeader className="w-full bg-slate-800/80">
-          <TableRow className="w-full">
-            <TableHead
-              className="w-[15%] font-semibold cursor-pointer"
-              onClick={() => handleSort("shortcut")}
-            >
-              <div className="flex items-center">
-                Shortcut
-                <ArrowUpDown className="ml-2 h-4 w-4" />
-              </div>
-            </TableHead>
-            <TableHead
-              className="w-[20%] font-semibold cursor-pointer"
-              onClick={() => handleSort("type")}
-            >
-              <div className="flex items-center">
-                Type
-                <ArrowUpDown className="ml-2 h-4 w-4" />
-              </div>
-            </TableHead>
-            <TableHead
-              className="w-[20%] font-semibold cursor-pointer"
-              onClick={() => handleSort("supplierName")}
-            >
-              <div className="flex items-center">
-                Supplier
-                <ArrowUpDown className="ml-2 h-4 w-4" />
-              </div>
-            </TableHead>
-            <TableHead className="w-[15%] font-semibold">Ext/Int</TableHead>
-            <TableHead className="w-[30%] text-right font-semibold" colSpan={2}>
-              Actions
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody className="w-full">
-          {paginatedProductTypes.length > 0 ? (
-            paginatedProductTypes.map((productType) => (
-              <TableRow
-                key={productType.id}
-                className="w-full text-orange-700 bg-card/70"
-              >
-                <TableCell className="w-[15%]">
-                  {productType.shortcut || "-"}
-                </TableCell>
-                <TableCell className="w-[20%] font-medium">
-                  {productType.type}
-                </TableCell>
-                <TableCell className="w-[20%]">
-                  {productType.supplier?.name || "-"}
-                </TableCell>
-                <TableCell className="w-[15%]">
-                  {displayUsageTypeShort(productType.usageType)}
-                </TableCell>
-                <TableCell className="w-[30%] text-right" colSpan={2}>
-                  <div className="flex gap-2 justify-end">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => {
-                        setSelectedProductTypeId(productType.id);
-                        setEditDialogOpen(true);
-                      }}
-                    >
-                      <Pencil className="size-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => {
-                        setProductTypeToDelete({
-                          id: productType.id,
-                          name: productType.type,
-                        });
-                        setDeleteDialogOpen(true);
-                      }}
-                    >
-                      <Trash className="size-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={6} className="h-24 text-center">
-                No product types found.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-        <TableFooter>
-          <TableRow>
-            <TableCell colSpan={5}>Total Displayed</TableCell>
-            <TableCell className="text-center">
-              {paginatedProductTypes.length}
-            </TableCell>
-          </TableRow>
-        </TableFooter>
-      </Table>
-
-      <div className="flex items-center justify-end space-x-2 py-4">
-        <div className="flex-1 text-sm text-muted-foreground">
-          {filteredAndSortedProductTypes.length} total product types.
-        </div>
-        <div className="flex items-center space-x-2">
-          <p className="text-sm font-medium">Rows per page</p>
-          <Select
-            value={String(itemsPerPage)}
-            onValueChange={(value) => {
-              setItemsPerPage(Number(value));
-              setCurrentPage(1);
-            }}
-          >
-            <SelectTrigger className="h-8 w-[70px]">
-              <SelectValue placeholder={itemsPerPage} />
-            </SelectTrigger>
-            <SelectContent side="top">
-              {[5, 10, 20, 50].map((pageSize) => (
-                <SelectItem key={pageSize} value={String(pageSize)}>
-                  {pageSize}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="flex w-[100px] items-center justify-center text-sm font-medium">
-            Page {currentPage} of {totalPages}
-          </div>
-          <div className="space-x-2">
-            <Button
-              variant="outline"
-              className="h-8 w-8 p-0"
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
-            >
-              <span className="sr-only">Go to previous page</span>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              className="h-8 w-8 p-0"
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
-            >
-              <span className="sr-only">Go to next page</span>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
-
+      <DataTable
+        data={productTypes}
+        columns={columns}
+        globalFilterPlaceholder="Search product types..."
+      />
       <EditProductTypeDialog
-        productTypeId={selectedProductTypeId}
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
-        onSuccess={() => {
-          window.location.reload();
+        productTypeId={selectedProductTypeId}
+        onSuccess={async () => {
+          setEditDialogOpen(false);
         }}
       />
-
       <DeleteProductTypeDialog
-        productTypeId={productTypeToDelete?.id ?? null}
-        productTypeName={productTypeToDelete?.name}
         open={deleteDialogOpen}
         onOpenChange={(open) => {
           setDeleteDialogOpen(open);
@@ -320,8 +206,10 @@ export function ProductTypesTable({
             setProductTypeToDelete(null);
           }
         }}
-        onSuccess={() => {
-          window.location.reload();
+        productTypeId={productTypeToDelete?.id}
+        productTypeName={productTypeToDelete?.name}
+        onSuccess={async () => {
+          setDeleteDialogOpen(false);
         }}
       />
     </>

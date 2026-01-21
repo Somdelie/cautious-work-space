@@ -8,6 +8,9 @@ export async function createProductType(data: {
   shortcut?: string;
   supplierId: string;
   usageType?: "INTERNAL" | "EXTERNAL" | "BOTH";
+  price?: number;
+  price5L?: number;
+  price20L?: number;
 }) {
   try {
     const productType = await prisma.productType.create({
@@ -16,6 +19,9 @@ export async function createProductType(data: {
         shortcut: data.shortcut || "",
         supplierId: data.supplierId,
         usageType: data.usageType || "BOTH",
+        price: typeof data.price === "number" ? data.price : 0,
+        price5L: typeof data.price5L === "number" ? data.price5L : 0,
+        price20L: typeof data.price20L === "number" ? data.price20L : 0,
       },
       include: {
         supplier: true,
@@ -77,6 +83,9 @@ export async function updateProductType(
     shortcut?: string;
     supplierId?: string;
     usageType?: "INTERNAL" | "EXTERNAL" | "BOTH";
+    price?: number;
+    price5L?: number;
+    price20L?: number;
   },
 ) {
   try {
@@ -87,6 +96,9 @@ export async function updateProductType(
         shortcut: data.shortcut,
         supplierId: data.supplierId,
         usageType: data.usageType,
+        price: typeof data.price === "number" ? data.price : undefined,
+        price5L: typeof data.price5L === "number" ? data.price5L : undefined,
+        price20L: typeof data.price20L === "number" ? data.price20L : undefined,
       },
       include: {
         supplier: true,

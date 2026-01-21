@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { useState } from "react";
 
 interface DeleteProductTypeDialogProps {
-  productTypeId: string | null;
+  productTypeId: string | undefined;
   productTypeName?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -46,7 +46,7 @@ export function DeleteProductTypeDialog({
       }
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "An unexpected error occurred"
+        error instanceof Error ? error.message : "An unexpected error occurred",
       );
     } finally {
       setLoading(false);
@@ -107,7 +107,3 @@ export function DeleteProductTypeDialog({
     </Dialog>
   );
 }
-
-
-
-

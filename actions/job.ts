@@ -8,10 +8,9 @@ type JobWithRelations = Awaited<
       include: {
         manager: true;
         supplier: true;
-        productTypes: true;
         jobProducts: {
           include: {
-            productType: true;
+            product: true;
           };
         };
       };
@@ -31,16 +30,21 @@ export async function getAllJobs(): Promise<GetAllJobsResult> {
       include: {
         manager: true,
         supplier: true,
-        productTypes: true,
-        jobProducts: {
+        jobProducts: { include: { product: true } },
+        orders: {
           include: {
-            productType: true,
+            items: {
+              include: {
+                product: true,
+                supplier: true,
+                variant: true,
+              },
+            },
           },
+          orderBy: { createdAt: "desc" },
         },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
     });
 
     // Sort jobs: ongoing jobs first (isStarted=true, isFinished=false), then others
@@ -55,7 +59,7 @@ export async function getAllJobs(): Promise<GetAllJobsResult> {
 
         // If both are ongoing or both are not, maintain createdAt order (newest first)
         return 0;
-      }
+      },
     );
 
     return {
@@ -111,45 +115,30 @@ export async function createJob(data: {
   jobNumber: string;
   siteName: string;
   client?: string;
-  managerId: string;
-  supplierId: string;
-  productTypeIds?: string[];
+  managerId?: string;
+  supplierId?: string;
   specPdfUrl?: string;
   boqPdfUrl?: string;
 }) {
-  try {
-    const job = await prisma.job.create({
-      data: {
-        jobNumber: data.jobNumber,
-        siteName: data.siteName,
-        client: data.client,
-        managerId: data.managerId,
-        supplierId: data.supplierId,
-        specPdfUrl: data.specPdfUrl,
-        boqPdfUrl: data.boqPdfUrl,
-        productTypes:
-          data.productTypeIds && data.productTypeIds.length > 0
-            ? {
-                connect: data.productTypeIds.map((id) => ({ id })),
-              }
-            : undefined,
-      },
-      include: {
-        manager: true,
-        supplier: true,
-        productTypes: true,
-        jobProducts: {
-          include: {
-            productType: true,
-          },
-        },
-      },
-    });
-    revalidatePath("/jobs");
-    return { success: true, data: job };
-  } catch {
-    return { success: false, error: "Failed to create job" };
-  }
+  const job = await prisma.job.create({
+    data: {
+      jobNumber: data.jobNumber,
+      siteName: data.siteName,
+      client: data.client,
+      managerId: data.managerId ?? null,
+      supplierId: data.supplierId ?? null,
+      specPdfUrl: data.specPdfUrl,
+      boqPdfUrl: data.boqPdfUrl,
+    },
+    include: {
+      manager: true,
+      supplier: true,
+      jobProducts: { include: { product: true } },
+    },
+  });
+
+  revalidatePath("/jobs");
+  return { success: true, data: job };
 }
 
 export async function getJobById(id: string) {
@@ -159,17 +148,18 @@ export async function getJobById(id: string) {
       include: {
         manager: true,
         supplier: true,
-        productTypes: true,
         jobProducts: {
           include: {
-            productType: true,
+            product: true,
           },
         },
         orders: {
           include: {
             items: {
               include: {
-                productType: true,
+                product: true,
+                supplier: true,
+                variant: true,
               },
             },
           },
@@ -196,7 +186,7 @@ export async function updateJob(
     productTypeIds?: string[];
     specPdfUrl?: string | null;
     boqPdfUrl?: string | null;
-  }
+  },
 ) {
   try {
     const updateData: {
@@ -231,10 +221,9 @@ export async function updateJob(
       include: {
         manager: true,
         supplier: true,
-        productTypes: true,
         jobProducts: {
           include: {
-            productType: true,
+            product: true,
           },
         },
       },

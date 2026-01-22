@@ -47,6 +47,7 @@ export default function UsersTable() {
             setEditDialogOpen(true);
           })}
           data={data}
+          storageKey="users-table"
         />
         <CreateUserDialog
           open={userCreateDialogOpen}

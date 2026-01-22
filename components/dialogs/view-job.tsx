@@ -64,19 +64,12 @@ type JobData = {
     id: string;
     name: string;
   };
-  productTypes: Array<{
-    id: string;
-    type: string;
-  }>;
   jobProducts: Array<{
     id: string;
     required: boolean;
     quantity: number | null;
     unit: string | null;
-    productType: {
-      id: string;
-      type: string;
-    };
+    // productType removed
   }>;
   orders?: Array<{
     id: string;
@@ -86,11 +79,7 @@ type JobData = {
       id: string;
       quantity: number;
       unit: string;
-      productType: {
-        id: string;
-        type: string;
-        shortcut: string;
-      };
+      // productType removed
     }>;
   }>;
 };
@@ -117,8 +106,32 @@ export function ViewJobDialog({
     try {
       const result = await getJobById(jobId);
       if (result.success && result.data) {
-        const jobData = result.data as JobData;
-        // Convert date strings to Date objects if needed
+        // Map backend order items to new structure
+        const raw = result.data;
+        const jobData: JobData = {
+          ...raw,
+          manager: raw.manager ?? {
+            id: "",
+            name: "",
+            phone: null,
+            email: null,
+          },
+          supplier: raw.supplier ?? { id: "", name: "" },
+          orders: Array.isArray(raw.orders)
+            ? raw.orders.map((order: any) => ({
+                id: order.id,
+                orderNumber: order.orderNumber,
+                createdAt: order.createdAt,
+                items: Array.isArray(order.items)
+                  ? order.items.map((item: any) => ({
+                      id: item.id,
+                      quantity: item.quantity,
+                      unit: item.unit,
+                    }))
+                  : [],
+              }))
+            : [],
+        };
         if (jobData.startedAt && typeof jobData.startedAt === "string") {
           jobData.startedAt = new Date(jobData.startedAt);
         }
@@ -489,59 +502,7 @@ export function ViewJobDialog({
                     Aggregated across all orders
                   </span>
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {/** compute totals per productType and unit */}
-                  {(() => {
-                    const totals = new Map();
-                    job.orders.forEach((o) =>
-                      o.items.forEach((it) => {
-                        const ptId = it.productType.id;
-                        if (!totals.has(ptId)) {
-                          totals.set(ptId, {
-                            type: it.productType.type,
-                            byUnit: new Map(),
-                          });
-                        }
-                        const entry = totals.get(ptId);
-                        const unit = it.unit || "";
-                        const prev = entry.byUnit.get(unit) || 0;
-                        entry.byUnit.set(unit, prev + Number(it.quantity));
-                      })
-                    );
-
-                    const rows: React.ReactElement[] = [];
-                    totals.forEach((value, key) => {
-                      const unitParts: string[] = [];
-                      value.byUnit.forEach((sum: number, unit: string) => {
-                        const trimmedUnit = unit.trim();
-                        unitParts.push(
-                          `${sum}${trimmedUnit ? "x" + trimmedUnit : ""}`
-                        );
-                      });
-                      rows.push(
-                        <div
-                          key={key}
-                          className="flex items-center justify-between bg-slate-900/30 border border-slate-700 rounded px-3 py-2"
-                        >
-                          <div className="text-sm font-medium text-slate-200">
-                            {value.type}
-                          </div>
-                          <div className="text-sm text-slate-300 bg-amber-400/30 px-2 py-1 rounded font-mono">
-                            {unitParts.join(", ")}
-                          </div>
-                        </div>
-                      );
-                    });
-
-                    return rows.length > 0 ? (
-                      rows
-                    ) : (
-                      <div className="text-sm text-slate-400">
-                        No ordered totals available
-                      </div>
-                    );
-                  })()}
-                </div>
+                {/* Ordered totals by productType removed; update as needed for new schema */}
               </div>
             )}
 
@@ -589,38 +550,13 @@ export function ViewJobDialog({
                     variant="secondary"
                     className="bg-purple-500/10 text-purple-300 border-purple-500/20 text-sm px-3 py-1"
                   >
-                    {job.supplier.name}
+                    {job?.supplier?.name}
                   </Badge>
                 </div>
               </div>
             </div>
 
-            {/* Product Types Section */}
-            {job.productTypes && job.productTypes.length > 0 && (
-              <div className="bg-slate-800/50 border border-slate-700 rounded p-4">
-                <h3 className="text-base font-semibold mb-3 text-slate-100 flex items-center gap-2">
-                  <div className="h-8 w-8 bg-orange-500/10 rounded flex items-center justify-center">
-                    <Package className="h-4 w-4 text-orange-400" />
-                  </div>
-                  Product Types
-                  <span className="text-xs font-normal text-slate-400 ml-auto">
-                    {job.productTypes.length}{" "}
-                    {job.productTypes.length === 1 ? "type" : "types"}
-                  </span>
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {job.productTypes.map((productType) => (
-                    <Badge
-                      key={productType.id}
-                      variant="outline"
-                      className="bg-slate-900/50 text-slate-200 border-slate-600 text-xs px-2.5 py-1"
-                    >
-                      {productType.type}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Product Types Section removed (ProductType deprecated) */}
 
             {/* Job Products Section */}
             {job.jobProducts && job.jobProducts.length > 0 && (
@@ -661,7 +597,7 @@ export function ViewJobDialog({
                             className="hover:bg-slate-900/30"
                           >
                             <td className="px-3 py-2.5 text-sm font-medium text-slate-200">
-                              {jobProduct.productType.type}
+                              Product
                             </td>
                             <td className="px-3 py-2.5">
                               {jobProduct.required ? (
@@ -716,7 +652,6 @@ export function ViewJobDialog({
                   <CreateOrder
                     jobId={job.id}
                     jobNumber={job.jobNumber}
-                    productTypes={job.productTypes}
                     onOrderCreated={fetchJob}
                   />
                 </div>
@@ -725,15 +660,14 @@ export function ViewJobDialog({
             )}
 
             {/* Empty State */}
-            {(!job.productTypes || job.productTypes.length === 0) &&
-              (!job.jobProducts || job.jobProducts.length === 0) && (
-                <div className="text-center py-12 bg-slate-800/30 border border-slate-700 rounded">
-                  <Package className="h-12 w-12 text-slate-600 mx-auto mb-3" />
-                  <p className="text-slate-400 text-sm">
-                    No products or product types assigned to this job
-                  </p>
-                </div>
-              )}
+            {(!job.jobProducts || job.jobProducts.length === 0) && (
+              <div className="text-center py-12 bg-slate-800/30 border border-slate-700 rounded">
+                <Package className="h-12 w-12 text-slate-600 mx-auto mb-3" />
+                <p className="text-slate-400 text-sm">
+                  No products assigned to this job
+                </p>
+              </div>
+            )}
           </div>
         )}
       </DialogContent>

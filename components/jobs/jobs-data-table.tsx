@@ -39,17 +39,17 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ViewJobDialog } from "@/components/dialogs/view-job";
-import { EditJobDialog } from "@/components/dialogs/edit-job";
 import { DeleteJobDialog } from "@/components/dialogs/delete-job";
 import { markJobAsStarted, markJobAsFinished } from "@/actions/job";
 import { useRouter } from "next/navigation";
+import { EditProductDialog } from "../dialogs/edit-job";
 
 type Job = {
   id: string;
   jobNumber: string;
   siteName: string;
-  managerId: string;
-  supplierId: string;
+  managerId: string | null;
+  supplierId: string | null;
   isStarted: boolean;
   isFinished: boolean;
   createdAt: Date;
@@ -58,24 +58,17 @@ type Job = {
     name: string;
     phone: string | null;
     email: string | null;
-  };
+  } | null;
   supplier: {
     id: string;
     name: string;
-  };
-  productTypes: Array<{
-    id: string;
-    type: string;
-  }>;
+  } | null;
   jobProducts: Array<{
     id: string;
     required: boolean;
     quantity: number | null;
     unit: string | null;
-    productType: {
-      id: string;
-      type: string;
-    };
+    // productType removed
   }>;
 };
 
@@ -203,18 +196,18 @@ export function JobsDataTable({ jobs }: { jobs: Job[] }) {
         },
       },
       {
-        accessorKey: "manager.name",
+        accessorKey: "manager?.name",
         header: "Manager",
         cell: ({ row }) => {
           const manager = row.original.manager;
           return (
             <div>
               <div className="font-medium capitalize text-orange-600">
-                {manager.name}
+                {manager?.name}
               </div>
-              {manager.email && (
+              {manager?.email && (
                 <div className="text-xs text-muted-foreground lowercase">
-                  {manager.email}
+                  {manager?.email}
                 </div>
               )}
             </div>
@@ -222,36 +215,31 @@ export function JobsDataTable({ jobs }: { jobs: Job[] }) {
         },
       },
       {
-        accessorFn: (row) => row.supplier.name,
+        accessorFn: (row) => (row.supplier ? row.supplier.name : ""),
         id: "supplierName", // Change this from "supplier.name" to "supplierName"
         header: "Supplier",
         cell: ({ row }) => (
           <Badge variant="secondary" className="font-medium">
-            {row.original.supplier.name}
+            {row?.original?.supplier?.name ?? ""}
           </Badge>
         ),
       },
       {
-        accessorKey: "ProductsTypes",
-        header: "Products Types",
+        accessorKey: "Products",
+        header: "Products",
         cell: ({ row }) => {
-          const productsTypes = row.original.productTypes;
+          const jobProducts = row.original.jobProducts;
           return (
             <div className="flex flex-wrap gap-1">
-              {productsTypes.length > 0 ? (
+              {jobProducts?.length > 0 ? (
                 <Badge variant="outline" className="text-xs">
-                  {productsTypes.length}
+                  {jobProducts?.length}
                 </Badge>
               ) : (
                 <span className="text-sm text-muted-foreground">
-                  No productsTypes
+                  No products
                 </span>
               )}
-              {/* {productsTypes.length > 2 && (
-                <Badge variant="outline" className="text-xs">
-                  +{productsTypes.length - 2}
-                </Badge>
-              )} */}
             </div>
           );
         },
@@ -370,10 +358,10 @@ export function JobsDataTable({ jobs }: { jobs: Job[] }) {
 
   return (
     <>
-      <DataTable
+      <DataTable<Job>
         data={data}
-        columns={columns}
-        globalFilterPlaceholder="Search jobs..."
+        columns={columns as ColumnDef<Job, any>[]}
+        storageKey="jobs-table"
       />
 
       <ViewJobDialog
@@ -382,8 +370,8 @@ export function JobsDataTable({ jobs }: { jobs: Job[] }) {
         onOpenChange={setViewDialogOpen}
       />
 
-      <EditJobDialog
-        jobId={selectedJobId}
+      <EditProductDialog
+        productId={selectedJobId}
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
         onSuccess={() => {

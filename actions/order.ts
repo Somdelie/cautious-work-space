@@ -6,10 +6,14 @@ export async function createOrder(
   orderNumber: string,
   jobId: string,
   items: Array<{
-    productTypeId: string;
+    productId: string;
+    supplierId: string;
+    variantId: string;
     quantity: number;
     unit: string;
-  }>
+    unitPrice?: number;
+    lineTotal?: number;
+  }>,
 ) {
   // Validate input
   if (!orderNumber || !orderNumber.trim() || !jobId) {
@@ -18,11 +22,22 @@ export async function createOrder(
 
   const validItems = items
     .map((it) => ({
-      productTypeId: it.productTypeId,
+      productId: it.productId,
+      supplierId: it.supplierId,
+      variantId: it.variantId,
       quantity: Number(it.quantity) || 0,
       unit: String(it.unit || "").trim(),
+      unitPrice: typeof it.unitPrice === "number" ? it.unitPrice : 0,
+      lineTotal: typeof it.lineTotal === "number" ? it.lineTotal : 0,
     }))
-    .filter((it) => it.productTypeId && it.quantity > 0 && it.unit);
+    .filter(
+      (it) =>
+        it.productId &&
+        it.supplierId &&
+        it.variantId &&
+        it.quantity > 0 &&
+        it.unit,
+    );
 
   if (validItems.length === 0) {
     return { success: false, error: "No valid order items provided" };
@@ -41,17 +56,27 @@ export async function createOrder(
       await tx.orderItem.createMany({
         data: validItems.map((it) => ({
           orderId: o.id,
-          productTypeId: it.productTypeId,
+          productId: it.productId,
+          supplierId: it.supplierId,
+          variantId: it.variantId,
           quantity: it.quantity,
           unit: it.unit,
+          unitPrice: it.unitPrice,
+          lineTotal: it.lineTotal,
         })),
       });
 
-      // Re-fetch the order with items and productType relations
+      // Re-fetch the order with items and product, supplier, variant relations
       const created = await tx.order.findUnique({
         where: { id: o.id },
         include: {
-          items: { include: { productType: true } },
+          items: {
+            include: {
+              product: true,
+              supplier: true,
+              variant: true,
+            },
+          },
         },
       });
 
@@ -72,7 +97,9 @@ export async function getJobOrders(jobId: string) {
       include: {
         items: {
           include: {
-            productType: true,
+            product: true,
+            supplier: true,
+            variant: true,
           },
         },
       },

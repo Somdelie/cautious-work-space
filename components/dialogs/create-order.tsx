@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,36 +21,32 @@ import { createOrder } from "@/actions/order";
 import { toast } from "sonner";
 
 interface OrderItem {
-  productTypeId: string;
+  id: string;
   quantity: number;
   unit: string;
+  // productTypeId removed
 }
 
 interface CreateOrderProps {
   jobId: string;
   jobNumber?: string;
-  productTypes: Array<{
-    id: string;
-    type: string;
-  }>;
   onOrderCreated?: () => void;
 }
 
-export function CreateOrder({
+export const CreateOrder: React.FC<CreateOrderProps> = ({
   jobId,
   jobNumber,
-  productTypes,
   onOrderCreated,
-}: CreateOrderProps) {
+}) => {
   const [open, setOpen] = useState(false);
   const [orderNumber, setOrderNumber] = useState(jobNumber || "");
   const [items, setItems] = useState<OrderItem[]>([
-    { productTypeId: "", quantity: 0, unit: "" },
+    { id: "", quantity: 0, unit: "" },
   ]);
   const [loading, setLoading] = useState(false);
 
   const handleAddItem = () => {
-    setItems([...items, { productTypeId: "", quantity: 0, unit: "" }]);
+    setItems([...items, { id: "", quantity: 0, unit: "" }]);
   };
 
   const handleRemoveItem = (index: number) => {
@@ -59,7 +56,7 @@ export function CreateOrder({
   const handleItemChange = (
     index: number,
     field: keyof OrderItem,
-    value: string | number
+    value: string | number,
   ) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
@@ -75,7 +72,7 @@ export function CreateOrder({
     }
 
     const validItems = items.filter(
-      (item) => item.productTypeId && item.quantity > 0 && item.unit.trim()
+      (item) => item.id && item.quantity > 0 && item.unit.trim(),
     );
 
     if (validItems.length === 0) {
@@ -85,11 +82,19 @@ export function CreateOrder({
 
     setLoading(true);
     try {
-      const result = await createOrder(orderNumber, jobId, validItems);
+      // Map validItems to the required structure for createOrder
+      const mappedItems = validItems.map((item) => ({
+        productId: item.id, // TODO: Map to real productId
+        supplierId: "", // TODO: Map to real supplierId
+        variantId: "", // TODO: Map to real variantId
+        quantity: item.quantity,
+        unit: item.unit,
+      }));
+      const result = await createOrder(orderNumber, jobId, mappedItems);
       if (result.success) {
         toast.success("Order created successfully");
         setOrderNumber("");
-        setItems([{ productTypeId: "", quantity: 0, unit: "" }]);
+        setItems([{ id: "", quantity: 0, unit: "" }]);
         setOpen(false);
         onOrderCreated?.();
       } else {
@@ -101,7 +106,6 @@ export function CreateOrder({
       setLoading(false);
     }
   };
-
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -132,31 +136,19 @@ export function CreateOrder({
               placeholder="e.g., 6633"
             />
           </div>
-
           <div className="space-y-3">
             <Label>Order Items</Label>
             {items.map((item, index) => (
               <div key={index} className="flex gap-2 items-end">
                 <div className="flex-1">
-                  <Select
-                    value={item.productTypeId}
-                    onValueChange={(value) =>
-                      handleItemChange(index, "productTypeId", value)
+                  <Input
+                    value={item.id}
+                    onChange={(e) =>
+                      handleItemChange(index, "id", e.target.value)
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select product type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {productTypes.map((pt) => (
-                        <SelectItem key={pt.id} value={pt.id}>
-                          {pt.type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="Product ID"
+                  />
                 </div>
-
                 <div className="w-24">
                   <Input
                     type="number"
@@ -167,13 +159,12 @@ export function CreateOrder({
                       handleItemChange(
                         index,
                         "quantity",
-                        parseFloat(e.target.value) || 0
+                        parseFloat(e.target.value) || 0,
                       )
                     }
                     placeholder="Qty"
                   />
                 </div>
-
                 <div className="w-20">
                   <Input
                     value={item.unit}
@@ -183,7 +174,6 @@ export function CreateOrder({
                     placeholder="20L"
                   />
                 </div>
-
                 <Button
                   type="button"
                   variant="ghost"
@@ -194,7 +184,6 @@ export function CreateOrder({
                 </Button>
               </div>
             ))}
-
             <Button
               type="button"
               variant="outline"
@@ -204,7 +193,6 @@ export function CreateOrder({
               + Add Item
             </Button>
           </div>
-
           <div className="flex justify-end gap-2 pt-4">
             <Button
               type="button"
@@ -221,4 +209,4 @@ export function CreateOrder({
       </DialogContent>
     </Dialog>
   );
-}
+};

@@ -23,13 +23,19 @@ export async function getSuppliers() {
   try {
     const suppliers = await prisma.supplier.findMany({
       include: {
-        products: true,
+        supplierProducts: {
+          include: {
+            product: true,
+            variants: true,
+          },
+        },
         jobs: true,
       },
-      orderBy: {
-        name: "asc",
-      },
+      orderBy: { name: "asc" },
     });
+
+    console.log(suppliers);
+
     return { success: true, data: suppliers };
   } catch (error) {
     return { success: false, error: "Failed to fetch suppliers" };
@@ -41,13 +47,12 @@ export async function getSupplierById(id: string) {
     const supplier = await prisma.supplier.findUnique({
       where: { id },
       include: {
-        products: true,
         jobs: {
           include: {
             manager: true,
             jobProducts: {
               include: {
-                productType: true,
+                product: true,
               },
             },
           },
@@ -60,7 +65,10 @@ export async function getSupplierById(id: string) {
   }
 }
 
-export async function updateSupplier(id: string, data: { name: string; logoUrl?: string }) {
+export async function updateSupplier(
+  id: string,
+  data: { name: string; logoUrl?: string },
+) {
   try {
     const supplier = await prisma.supplier.update({
       where: { id },

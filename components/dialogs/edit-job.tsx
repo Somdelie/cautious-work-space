@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
 import type React from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -20,615 +22,468 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, CheckCircle2, Upload, FileText, X } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { updateJob, getJobById, markJobAsFinished } from "@/actions/job";
-import { getManagers } from "@/actions/manager";
-import { getSuppliers } from "@/actions/supplier";
-import { getProductTypes } from "@/actions/product-type";
-import { Checkbox } from "@/components/ui/checkbox";
-import { useRouter } from "next/navigation";
 
-interface EditJobDialogProps {
-  jobId: string | null;
+// ✅ NEW actions (you need these)
+import { getSuppliers } from "@/actions/supplier";
+import {
+  getProductById,
+  updateProduct,
+  upsertSupplierProduct,
+  upsertVariant,
+  deleteVariant,
+} from "@/actions/product";
+
+type UsageType = "INTERNAL" | "EXTERNAL" | "BOTH";
+type MeasureUnit = "L" | "KG" | "EA";
+
+type Supplier = { id: string; name: string };
+
+type Variant = {
+  id: string;
+  size: number;
+  unit: MeasureUnit;
+  price: number;
+  sku: string | null;
+  isActive: boolean;
+};
+
+type SupplierProduct = {
+  supplierId: string;
+  isActive: boolean;
+  supplier: Supplier;
+  variants: Variant[];
+};
+
+type Product = {
+  id: string;
+  name: string;
+  shortcut: string | null;
+  usageType: UsageType;
+  supplierProducts: SupplierProduct[];
+};
+
+interface EditProductDialogProps {
+  productId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
 }
 
-interface Manager {
-  id: string;
-  name: string;
+function usageToUi(u: UsageType) {
+  if (u === "INTERNAL") return "internal";
+  if (u === "EXTERNAL") return "external";
+  return "both";
+}
+function uiToUsage(v: string): UsageType {
+  if (v === "internal") return "INTERNAL";
+  if (v === "external") return "EXTERNAL";
+  return "BOTH";
 }
 
-interface Supplier {
-  id: string;
-  name: string;
+function normalizeSize(n: string) {
+  const v = Number(String(n).replace(",", "."));
+  return Number.isFinite(v) ? v : 0;
 }
 
-interface ProductType {
-  id: string;
-  type: string;
-  shortcut: string | null;
-}
-
-export function EditJobDialog({
-  jobId,
+export function EditProductDialog({
+  productId,
   open,
   onOpenChange,
   onSuccess,
-}: EditJobDialogProps) {
-  const router = useRouter();
+}: EditProductDialogProps) {
   const [loading, setLoading] = useState(false);
-  const [loadingJob, setLoadingJob] = useState(false);
-  const [markingFinished, setMarkingFinished] = useState(false);
-  const [managers, setManagers] = useState<Manager[]>([]);
+  const [loadingProduct, setLoadingProduct] = useState(false);
+
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [productTypes, setProductTypes] = useState<ProductType[]>([]);
-  const [selectedProductTypeIds, setSelectedProductTypeIds] = useState<
-    string[]
-  >([]);
-  const [jobNumber, setJobNumber] = useState("");
-  const [siteName, setSiteName] = useState("");
-  const [client, setClient] = useState("");
-  const [managerId, setManagerId] = useState("");
-  const [supplierId, setSupplierId] = useState("");
-  const [specPdfUrl, setSpecPdfUrl] = useState<string | null>(null);
-  const [boqPdfUrl, setBoqPdfUrl] = useState<string | null>(null);
-  const [specFileName, setSpecFileName] = useState<string | null>(null);
-  const [boqFileName, setBoqFileName] = useState<string | null>(null);
-  const [specUploading, setSpecUploading] = useState(false);
-  const [boqUploading, setBoqUploading] = useState(false);
-  const [isStarted, setIsStarted] = useState(false);
-  const [isFinished, setIsFinished] = useState(false);
 
-  // Load managers and suppliers when dialog opens
+  // product fields
+  const [name, setName] = useState("");
+  const [shortcut, setShortcut] = useState("");
+  const [usage, setUsage] = useState<string>("both");
+
+  // supplier+variants editing scope
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
+
+  // local copy for UI edits
+  const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>(
+    [],
+  );
+
+  // ---- derived
+  const selectedSP = useMemo(() => {
+    return (
+      supplierProducts.find((sp) => sp.supplierId === selectedSupplierId) ??
+      null
+    );
+  }, [supplierProducts, selectedSupplierId]);
+
+  // ---- load suppliers when open
   useEffect(() => {
-    const fetchData = async () => {
-      const [managersResult, suppliersResult] = await Promise.all([
-        getManagers(),
-        getSuppliers(),
-      ]);
-
-      if (managersResult.success && managersResult.data) {
-        setManagers(managersResult.data);
-      }
-      if (suppliersResult.success && suppliersResult.data) {
-        setSuppliers(suppliersResult.data);
-      }
-    };
-
-    if (open) {
-      fetchData();
-    }
+    if (!open) return;
+    (async () => {
+      const res = await getSuppliers();
+      if (res.success && res.data) setSuppliers(res.data);
+    })();
   }, [open]);
 
-  // Load job data when jobId changes
+  // ---- load product when open/productId changes
   useEffect(() => {
-    const fetchJob = async () => {
-      if (!jobId || !open) {
-        return;
-      }
+    if (!open || !productId) return;
 
-      setLoadingJob(true);
+    (async () => {
+      setLoadingProduct(true);
       try {
-        const result = await getJobById(jobId);
-        if (result.success && result.data) {
-          const job = result.data;
-          setJobNumber(job.jobNumber);
-          setSiteName(job.siteName);
-          setClient(job.client || "");
-          setManagerId(job.managerId);
-          setSupplierId(job.supplierId);
-          setSpecPdfUrl(job.specPdfUrl || null);
-          setBoqPdfUrl(job.boqPdfUrl || null);
-          setSpecFileName(
-            job.specPdfUrl ? job.specPdfUrl.split("/").pop() ?? null : null
-          );
-          setBoqFileName(
-            job.boqPdfUrl ? job.boqPdfUrl.split("/").pop() ?? null : null
-          );
-          setIsStarted(job.isStarted || false);
-          setIsFinished(job.isFinished || false);
-
-          // Set selected product types
-          if (job.productTypes) {
-            setSelectedProductTypeIds(
-              job.productTypes.map((pt: { id: string }) => pt.id)
-            );
-          }
-        } else {
-          toast.error("Failed to load job data");
+        const res = await getProductById(productId);
+        if (!res.success || !res.data) {
+          toast.error("Failed to load product");
           onOpenChange(false);
+          return;
         }
-      } catch (error) {
-        toast.error("Failed to load job data");
+
+        const p: Product = res.data;
+
+        setName(p.name ?? "");
+        setShortcut(p.shortcut ?? "");
+        setUsage(usageToUi(p.usageType ?? "BOTH"));
+
+        const sps = p.supplierProducts ?? [];
+        setSupplierProducts(sps);
+
+        // pick a default supplier for variants UI
+        const firstActive = sps.find((x) => x.isActive) ?? sps[0] ?? null;
+        setSelectedSupplierId(firstActive?.supplierId ?? "");
+      } catch {
+        toast.error("Failed to load product");
         onOpenChange(false);
       } finally {
-        setLoadingJob(false);
+        setLoadingProduct(false);
       }
-    };
+    })();
+  }, [open, productId, onOpenChange]);
 
-    fetchJob();
-  }, [jobId, open, onOpenChange]);
-
-  // Load product types when supplier changes
-  useEffect(() => {
-    const fetchProductTypes = async () => {
-      if (supplierId) {
-        const result = await getProductTypes(supplierId);
-        if (result.success && result.data) {
-          setProductTypes(result.data);
-        }
-      } else {
-        setProductTypes([]);
-      }
-    };
-
-    if (supplierId) {
-      fetchProductTypes();
-    }
-  }, [supplierId]);
-
-  // Reset form when dialog closes
+  // ---- reset on close
   useEffect(() => {
     if (!open) {
-      setJobNumber("");
-      setSiteName("");
-      setManagerId("");
-      setSupplierId("");
-      setSelectedProductTypeIds([]);
-      setProductTypes([]);
-      setIsStarted(false);
-      setIsFinished(false);
-      setSpecPdfUrl(null);
-      setBoqPdfUrl(null);
-      setSpecFileName(null);
-      setBoqFileName(null);
-      setSpecUploading(false);
-      setBoqUploading(false);
-      setClient("");
+      setName("");
+      setShortcut("");
+      setUsage("both");
+      setSelectedSupplierId("");
+      setSupplierProducts([]);
+      setLoading(false);
+      setLoadingProduct(false);
     }
   }, [open]);
 
-  const handlePdfUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-    onSuccess: (url: string, name: string) => void,
-    setUploading: (value: boolean) => void
-  ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleToggleSupplier = async (supplierId: string, checked: boolean) => {
+    if (!productId) return;
 
-    if (file.type !== "application/pdf") {
-      toast.error("Please select a PDF file");
-      return;
-    }
+    // optimistic update
+    setSupplierProducts((prev) => {
+      const exists = prev.find((x) => x.supplierId === supplierId);
+      if (!exists) {
+        const sup = suppliers.find((s) => s.id === supplierId);
+        if (!sup) return prev;
+        return [
+          ...prev,
+          {
+            supplierId,
+            isActive: checked,
+            supplier: sup,
+            variants: [],
+          },
+        ];
+      }
+      return prev.map((x) =>
+        x.supplierId === supplierId ? { ...x, isActive: checked } : x,
+      );
+    });
 
-    if (file.size > 20 * 1024 * 1024) {
-      toast.error("PDF size must be less than 20MB");
-      return;
-    }
-
-    setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
+      const res = await upsertSupplierProduct({
+        supplierId,
+        productId,
+        isActive: checked,
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to upload file");
-      }
-
-      const data = await response.json();
-      onSuccess(data.url, file.name);
-      toast.success("File uploaded");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to upload file"
-      );
-    } finally {
-      setUploading(false);
-      e.target.value = "";
-    }
-  };
-
-  const handleMarkAsFinished = async () => {
-    if (!jobId) return;
-
-    setMarkingFinished(true);
-    try {
-      const result = await markJobAsFinished(jobId);
-      if (result.success) {
-        toast.success("Job marked as finished");
-        setIsFinished(true);
-        setIsStarted(true);
-        router.refresh();
-        onSuccess?.();
+      if (!res.success) {
+        toast.error(res.error || "Failed to update supplier link");
       } else {
-        toast.error(result.error || "Failed to mark job as finished");
+        toast.success(checked ? "Supplier linked" : "Supplier disabled");
+        if (checked) setSelectedSupplierId(supplierId);
       }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "An unexpected error occurred"
-      );
-    } finally {
-      setMarkingFinished(false);
+    } catch (e) {
+      toast.error("Failed to update supplier link");
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!productId) return;
 
-    if (!jobId) return;
-
-    if (!jobNumber.trim()) {
-      toast.error("Please enter a job number");
-      return;
-    }
-
-    if (!siteName.trim()) {
-      toast.error("Please enter a site name");
-      return;
-    }
-
-    if (!managerId) {
-      toast.error("Please select a manager");
-      return;
-    }
-
-    if (!supplierId) {
-      toast.error("Please select a supplier");
+    if (!name.trim()) {
+      toast.error("Product name is required");
       return;
     }
 
     setLoading(true);
     try {
-      const result = await updateJob(jobId, {
-        jobNumber,
-        siteName,
-        client,
-        managerId,
-        supplierId,
-        productTypeIds: selectedProductTypeIds,
-        specPdfUrl: specPdfUrl ?? null,
-        boqPdfUrl: boqPdfUrl ?? null,
+      const res = await updateProduct(productId, {
+        name: name.trim(),
+        shortcut: shortcut.trim() || null,
+        usageType: uiToUsage(usage),
       });
 
-      if (result.success) {
-        toast.success("Job updated successfully");
-        onOpenChange(false);
-        onSuccess?.();
-      } else {
-        toast.error(result.error || "Failed to update job");
+      if (!res.success) {
+        toast.error(res.error || "Failed to update product");
+        return;
       }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "An unexpected error occurred"
-      );
+
+      toast.success("Product updated");
+      onOpenChange(false);
+      onSuccess?.();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unexpected error");
     } finally {
       setLoading(false);
     }
   };
 
+  const handleUpsertVariant = async (payload: {
+    id?: string;
+    supplierId: string;
+    productId: string;
+    size: number;
+    unit: MeasureUnit;
+    price: number;
+    sku?: string | null;
+    isActive: boolean;
+  }) => {
+    try {
+      const res = await upsertVariant(payload);
+      if (!res.success || !res.data) {
+        toast.error(res.error || "Failed to save variant");
+        return;
+      }
+
+      const saved: Variant = res.data;
+
+      setSupplierProducts((prev) =>
+        prev.map((sp) => {
+          if (sp.supplierId !== payload.supplierId) return sp;
+
+          const exists = sp.variants.find((v) => v.id === saved.id);
+          if (exists) {
+            return {
+              ...sp,
+              variants: sp.variants.map((v) => (v.id === saved.id ? saved : v)),
+            };
+          }
+          return { ...sp, variants: [saved, ...sp.variants] };
+        }),
+      );
+
+      toast.success("Variant saved");
+    } catch {
+      toast.error("Failed to save variant");
+    }
+  };
+
+  const handleDeleteVariant = async (variantId: string) => {
+    try {
+      const res = await deleteVariant(variantId);
+      if (!res.success) {
+        toast.error(res.error || "Failed to delete variant");
+        return;
+      }
+
+      setSupplierProducts((prev) =>
+        prev.map((sp) => ({
+          ...sp,
+          variants: sp.variants.filter((v) => v.id !== variantId),
+        })),
+      );
+
+      toast.success("Variant deleted");
+    } catch {
+      toast.error("Failed to delete variant");
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[675px]">
+      <DialogContent className="sm:max-w-[760px]">
         <DialogHeader>
-          <DialogTitle>Edit Job</DialogTitle>
+          <DialogTitle>Edit Product</DialogTitle>
           <DialogDescription>
-            Update job information and assignments
+            Update product details, supplier links, and supplier-specific
+            variants (sizes & prices).
           </DialogDescription>
         </DialogHeader>
 
-        {loadingJob ? (
-          <div className="flex items-center justify-center py-8">
+        {loadingProduct ? (
+          <div className="flex items-center justify-center py-10">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <form
-            onSubmit={handleSubmit}
-            className="space-y-4 max-h-[70vh] overflow-y-auto pr-4"
-          >
-            <div className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleSaveProduct} className="space-y-6">
+            {/* Product core */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-job-number">Job Number *</Label>
+                <Label htmlFor="p-name">Product Name *</Label>
                 <Input
-                  id="edit-job-number"
-                  placeholder="e.g., JOB-001"
-                  value={jobNumber}
-                  onChange={(e) => setJobNumber(e.target.value)}
+                  id="p-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   disabled={loading}
+                  placeholder="e.g., PGS1 / UC2 WOOD PRIMER"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-site-name">Site Name *</Label>
-                <Input
-                  id="edit-site-name"
-                  placeholder="e.g., Downtown Project"
-                  value={siteName}
-                  onChange={(e) => setSiteName(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-client">Client / Company Name</Label>
-              <Input
-                id="edit-client"
-                placeholder="e.g., Acme Corp."
-                value={client}
-                onChange={(e) => setClient(e.target.value)}
-                disabled={loading}
-              />
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-manager-select">Manager *</Label>
-                <Select value={managerId} onValueChange={setManagerId}>
-                  <SelectTrigger id="edit-manager-select" disabled={loading}>
-                    <SelectValue placeholder="Select manager" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {managers.map((manager) => (
-                      <SelectItem key={manager.id} value={manager.id}>
-                        {manager.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="p-shortcut">Shortcut</Label>
+                <Input
+                  id="p-shortcut"
+                  value={shortcut}
+                  onChange={(e) => setShortcut(e.target.value)}
+                  disabled={loading}
+                  placeholder="e.g., PGS1"
+                />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-supplier-select">Supplier *</Label>
-                <Select value={supplierId} onValueChange={setSupplierId}>
-                  <SelectTrigger id="edit-supplier-select" disabled={loading}>
-                    <SelectValue placeholder="Select supplier" />
+
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="p-usage">Usage</Label>
+                <Select
+                  value={usage}
+                  onValueChange={setUsage}
+                  disabled={loading}
+                >
+                  <SelectTrigger id="p-usage">
+                    <SelectValue placeholder="Select usage" />
                   </SelectTrigger>
                   <SelectContent>
-                    {suppliers.map((supplier) => (
-                      <SelectItem key={supplier.id} value={supplier.id}>
-                        {supplier.name}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="external">External</SelectItem>
+                    <SelectItem value="internal">Internal</SelectItem>
+                    <SelectItem value="both">Both</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            {supplierId && (
-              <div className="space-y-3">
-                <Label>Product Types</Label>
-                <div className="border rounded-md p-4 max-h-48 overflow-y-auto space-y-3">
-                  {productTypes.length > 0 ? (
-                    productTypes.map((productType) => (
-                      <div
-                        key={productType.id}
-                        className="flex items-center space-x-2"
-                      >
-                        <Checkbox
-                          id={`edit-product-type-${productType.id}`}
-                          checked={selectedProductTypeIds.includes(
-                            productType.id
-                          )}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setSelectedProductTypeIds([
-                                ...selectedProductTypeIds,
-                                productType.id,
-                              ]);
-                            } else {
-                              setSelectedProductTypeIds(
-                                selectedProductTypeIds.filter(
-                                  (id) => id !== productType.id
-                                )
-                              );
-                            }
-                          }}
-                          disabled={loading}
-                        />
-                        <Label
-                          htmlFor={`edit-product-type-${productType.id}`}
-                          className="text-sm font-normal cursor-pointer flex-1"
-                        >
-                          {productType.type}{" "}
-                          <span className="text-xs text-rose-500">
-                            ({productType.shortcut || "No shortcut"})
-                          </span>
-                        </Label>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No product types available for this supplier
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-3">
-              <Label>Attachments (PDF)</Label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="border rounded-md p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-medium">Project Spec</span>
-                    </div>
-                    {specPdfUrl && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2"
-                        onClick={() => {
-                          setSpecPdfUrl(null);
-                          setSpecFileName(null);
-                        }}
-                        disabled={loading || specUploading}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                  {specPdfUrl ? (
-                    <p className="text-xs text-muted-foreground break-all">
-                      {specFileName || "spec.pdf"}
-                    </p>
-                  ) : (
-                    <label className="flex flex-col items-center justify-center border-2 border-dashed rounded-md py-6 cursor-pointer hover:border-primary/60 transition-colors">
-                      <Upload className="h-5 w-5 text-muted-foreground mb-2" />
-                      <span className="text-sm text-muted-foreground">
-                        Upload Spec PDF
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        PDF up to 20MB
-                      </span>
-                      <input
-                        type="file"
-                        accept="application/pdf"
-                        className="hidden"
-                        onChange={(e) =>
-                          handlePdfUpload(
-                            e,
-                            (url, name) => {
-                              setSpecPdfUrl(url);
-                              setSpecFileName(name);
-                            },
-                            setSpecUploading
-                          )
-                        }
-                        disabled={loading || specUploading}
-                      />
-                    </label>
-                  )}
-                  {specUploading && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Uploading spec...
-                    </div>
-                  )}
+            {/* Suppliers link */}
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-100">
+                    Suppliers
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    Link this product to suppliers (creates SupplierProduct
+                    records)
+                  </p>
                 </div>
 
-                <div className="border rounded-md p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-medium">BOQ</span>
-                    </div>
-                    {boqPdfUrl && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2"
-                        onClick={() => {
-                          setBoqPdfUrl(null);
-                          setBoqFileName(null);
-                        }}
-                        disabled={loading || boqUploading}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                  {boqPdfUrl ? (
-                    <p className="text-xs text-muted-foreground break-all">
-                      {boqFileName || "boq.pdf"}
-                    </p>
-                  ) : (
-                    <label className="flex flex-col items-center justify-center border-2 border-dashed rounded-md py-6 cursor-pointer hover:border-primary/60 transition-colors">
-                      <Upload className="h-5 w-5 text-muted-foreground mb-2" />
-                      <span className="text-sm text-muted-foreground">
-                        Upload BOQ PDF
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        PDF up to 20MB
-                      </span>
-                      <input
-                        type="file"
-                        accept="application/pdf"
-                        className="hidden"
-                        onChange={(e) =>
-                          handlePdfUpload(
-                            e,
-                            (url, name) => {
-                              setBoqPdfUrl(url);
-                              setBoqFileName(name);
-                            },
-                            setBoqUploading
-                          )
-                        }
-                        disabled={loading || boqUploading}
-                      />
-                    </label>
-                  )}
-                  {boqUploading && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Uploading BOQ...
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {isStarted && !isFinished && (
-                <div className="flex items-center justify-between p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse" />
-                    <span className="text-sm text-blue-400 font-medium">
-                      Job is ongoing
-                    </span>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleMarkAsFinished}
-                    disabled={markingFinished || loading}
-                    className="gap-2 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/10"
+                <div className="w-[260px]">
+                  <Select
+                    value={selectedSupplierId}
+                    onValueChange={setSelectedSupplierId}
+                    disabled={loading}
                   >
-                    {markingFinished ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="h-4 w-4" />
-                    )}
-                    Mark as Finished
-                  </Button>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select supplier for variants" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {supplierProducts
+                        .filter((sp) => sp.isActive)
+                        .map((sp) => (
+                          <SelectItem key={sp.supplierId} value={sp.supplierId}>
+                            {sp.supplier?.name ?? sp.supplierId}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
-              {isFinished && (
-                <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-md">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                  <span className="text-sm text-emerald-400 font-medium">
-                    Job is finished
-                  </span>
-                </div>
-              )}
-              <div className="flex gap-2 justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => onOpenChange(false)}
-                  disabled={loading || markingFinished}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={loading || markingFinished}
-                  className="gap-2"
-                >
-                  {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Update Job
-                </Button>
               </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {suppliers.map((s) => {
+                  const linked = supplierProducts.find(
+                    (sp) => sp.supplierId === s.id,
+                  );
+                  const checked = linked ? linked.isActive : false;
+
+                  return (
+                    <label
+                      key={s.id}
+                      className="flex items-center gap-3 rounded-md border border-slate-800 bg-slate-900/40 px-3 py-2"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) =>
+                          handleToggleSupplier(s.id, Boolean(v))
+                        }
+                        disabled={loading}
+                      />
+                      <span className="text-sm text-slate-200">{s.name}</span>
+                      {checked ? (
+                        <span className="ml-auto text-[11px] text-emerald-400">
+                          Active
+                        </span>
+                      ) : (
+                        <span className="ml-auto text-[11px] text-slate-500">
+                          Off
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Variants editor for selected supplier */}
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-100">
+                    Variants
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    Sizes/prices are supplier-specific (e.g., 20L, 5L, 25KG)
+                  </p>
+                </div>
+              </div>
+
+              {!selectedSupplierId || !selectedSP ? (
+                <p className="text-sm text-slate-400">
+                  Select an active supplier above to manage variants.
+                </p>
+              ) : (
+                <VariantsPanel
+                  productId={productId!}
+                  supplierId={selectedSupplierId}
+                  variants={selectedSP.variants}
+                  disabled={loading}
+                  onSave={handleUpsertVariant}
+                  onDelete={handleDeleteVariant}
+                />
+              )}
+            </div>
+
+            {/* footer */}
+            <div className="flex gap-2 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading} className="gap-2">
+                {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                Save Product
+              </Button>
             </div>
           </form>
         )}
@@ -636,3 +491,216 @@ export function EditJobDialog({
     </Dialog>
   );
 }
+
+function VariantsPanel({
+  productId,
+  supplierId,
+  variants,
+  disabled,
+  onSave,
+  onDelete,
+}: {
+  productId: string;
+  supplierId: string;
+  variants: Variant[];
+  disabled: boolean;
+  onSave: (payload: {
+    id?: string;
+    supplierId: string;
+    productId: string;
+    size: number;
+    unit: MeasureUnit;
+    price: number;
+    sku?: string | null;
+    isActive: boolean;
+  }) => Promise<void>;
+  onDelete: (variantId: string) => Promise<void>;
+}) {
+  const [newSize, setNewSize] = useState<string>("");
+  const [newUnit, setNewUnit] = useState<MeasureUnit>("L");
+  const [newPrice, setNewPrice] = useState<string>("");
+
+  const sorted = useMemo(() => {
+    const unitOrder: Record<MeasureUnit, number> = { L: 0, KG: 1, EA: 2 };
+    return [...(variants ?? [])].sort((a, b) => {
+      const ua = unitOrder[a.unit] ?? 9;
+      const ub = unitOrder[b.unit] ?? 9;
+      if (ua !== ub) return ua - ub;
+      return a.size - b.size;
+    });
+  }, [variants]);
+
+  return (
+    <div className="space-y-3">
+      {/* add row */}
+      <div className="grid grid-cols-12 gap-2 items-end">
+        <div className="col-span-4">
+          <Label className="text-xs">Size</Label>
+          <Input
+            value={newSize}
+            onChange={(e) => setNewSize(e.target.value)}
+            placeholder="e.g., 20"
+            disabled={disabled}
+          />
+        </div>
+        <div className="col-span-3">
+          <Label className="text-xs">Unit</Label>
+          <Select
+            value={newUnit}
+            onValueChange={(v) => setNewUnit(v as MeasureUnit)}
+            disabled={disabled}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="L">L</SelectItem>
+              <SelectItem value="KG">KG</SelectItem>
+              <SelectItem value="EA">EA</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="col-span-5">
+          <Label className="text-xs">Price</Label>
+          <div className="flex gap-2">
+            <Input
+              value={newPrice}
+              onChange={(e) => setNewPrice(e.target.value)}
+              placeholder="e.g., 792.38"
+              disabled={disabled}
+            />
+            <Button
+              type="button"
+              className="gap-2"
+              disabled={disabled}
+              onClick={async () => {
+                const size = normalizeSize(newSize);
+                const price = normalizeSize(newPrice);
+                if (!size || !price) {
+                  toast.error("Enter size and price");
+                  return;
+                }
+                await onSave({
+                  supplierId,
+                  productId,
+                  size,
+                  unit: newUnit,
+                  price,
+                  isActive: true,
+                });
+                setNewSize("");
+                setNewPrice("");
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              Add
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* list */}
+      <div className="divide-y divide-slate-800 rounded-md border border-slate-800 overflow-hidden">
+        {sorted.length === 0 ? (
+          <div className="p-4 text-sm text-slate-400">
+            No variants yet for this supplier.
+          </div>
+        ) : (
+          sorted.map((v) => (
+            <VariantRow
+              key={v.id}
+              v={v}
+              disabled={disabled}
+              onSave={onSave}
+              onDelete={onDelete}
+              supplierId={supplierId}
+              productId={productId}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function VariantRow({
+  v,
+  disabled,
+  onSave,
+  onDelete,
+  supplierId,
+  productId,
+}: {
+  v: Variant;
+  disabled: boolean;
+  supplierId: string;
+  productId: string;
+  onSave: VariantsPanelProps["onSave"];
+  onDelete: VariantsPanelProps["onDelete"];
+}) {
+  const [price, setPrice] = useState<string>(String(v.price ?? 0));
+  const [active, setActive] = useState<boolean>(Boolean(v.isActive));
+
+  useEffect(() => {
+    setPrice(String(v.price ?? 0));
+    setActive(Boolean(v.isActive));
+  }, [v.id]);
+
+  return (
+    <div className="p-3 flex items-center gap-3">
+      <div className="w-28 text-sm text-slate-200 font-medium">
+        {Number.isInteger(v.size) ? v.size : v.size}
+        {v.unit}
+      </div>
+
+      <div className="flex-1">
+        <Input
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+          disabled={disabled}
+        />
+      </div>
+
+      <label className="flex items-center gap-2 text-xs text-slate-300">
+        <Checkbox
+          checked={active}
+          onCheckedChange={(x) => setActive(Boolean(x))}
+          disabled={disabled}
+        />
+        Active
+      </label>
+
+      <Button
+        type="button"
+        variant="secondary"
+        disabled={disabled}
+        onClick={() =>
+          onSave({
+            id: v.id,
+            supplierId,
+            productId,
+            size: v.size,
+            unit: v.unit,
+            price: normalizeSize(price),
+            sku: v.sku ?? null,
+            isActive: active,
+          })
+        }
+      >
+        Save
+      </Button>
+
+      <Button
+        type="button"
+        variant="ghost"
+        disabled={disabled}
+        onClick={() => onDelete(v.id)}
+        className="text-red-400 hover:text-red-300"
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
+type VariantsPanelProps = React.ComponentProps<typeof VariantsPanel>;

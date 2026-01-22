@@ -21,7 +21,6 @@ export async function createJobProduct(data: {
       },
       include: {
         job: true,
-        productType: true,
       },
     });
     revalidatePath("/jobs");
@@ -44,11 +43,6 @@ export async function getJobProducts(jobId?: string) {
             supplier: true,
           },
         },
-        productType: {
-          include: {
-            supplier: true,
-          },
-        },
       },
     });
     return { success: true, data: jobProducts };
@@ -68,11 +62,6 @@ export async function getJobProductById(id: string) {
             supplier: true,
           },
         },
-        productType: {
-          include: {
-            supplier: true,
-          },
-        },
       },
     });
     return { success: true, data: jobProduct };
@@ -88,7 +77,7 @@ export async function updateJobProduct(
     required?: boolean;
     quantity?: number;
     unit?: string;
-  }
+  },
 ) {
   try {
     const jobProduct = await prisma.jobProduct.update({
@@ -101,7 +90,6 @@ export async function updateJobProduct(
       },
       include: {
         job: true,
-        productType: true,
       },
     });
     revalidatePath("/jobs");
@@ -141,7 +129,7 @@ export async function bulkUpdateJobProducts(
     required: boolean;
     quantity?: number;
     unit?: string;
-  }>
+  }>,
 ) {
   try {
     // Delete existing job products

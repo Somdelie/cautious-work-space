@@ -31,11 +31,7 @@ interface OrderItem {
   id: string;
   quantity: number;
   unit: string;
-  productType: {
-    id: string;
-    type: string;
-    shortcut: string;
-  };
+  // productType removed
 }
 
 interface Order {
@@ -85,9 +81,7 @@ export function OrdersTable({ orders, onOrderDeleted }: OrdersTableProps) {
       if (order.orderNumber.toLowerCase().includes(query)) return true;
 
       // Search in product types
-      return order.items.some((item) =>
-        item.productType.type.toLowerCase().includes(query)
-      );
+      return order.items.some((item) => false);
     });
   }, [orders, searchQuery]);
 
@@ -222,10 +216,7 @@ export function OrdersTable({ orders, onOrderDeleted }: OrdersTableProps) {
                       >
                         {item.quantity}x{item.unit}{" "}
                         <span className="font-medium lowercase text-muted-foreground flex items-center gap-1">
-                          {item.productType.type}{" "}
-                          <p className="text-teal-700 uppercase font-mono text-xs">
-                            ({item.productType.shortcut})
-                          </p>
+                          {/* productType removed */}
                         </span>
                       </div>
                     ))}

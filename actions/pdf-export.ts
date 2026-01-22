@@ -21,16 +21,13 @@ interface JobDataForPDF {
     items: Array<{
       quantity: number;
       unit: string;
-      productType: {
-        id: string;
-        type: string;
-      };
+      // productType removed
     }>;
   }>;
 }
 
 export async function generateJobOrderPDF(
-  jobId: string
+  jobId: string,
 ): Promise<
   | { success: true; data: string; filename: string }
   | { success: false; error: string }
@@ -43,11 +40,7 @@ export async function generateJobOrderPDF(
         supplier: true,
         orders: {
           include: {
-            items: {
-              include: {
-                productType: true,
-              },
-            },
+            items: true,
           },
           orderBy: {
             createdAt: "desc",
@@ -101,7 +94,7 @@ export async function generateJobOrderPDF(
       })}`,
       pageWidth / 2,
       25,
-      { align: "center" }
+      { align: "center" },
     );
     doc.setTextColor(0, 0, 0);
     yPosition = 45;
@@ -176,75 +169,7 @@ export async function generateJobOrderPDF(
       addSectionHeader("ORDERED TOTALS (AGGREGATED)");
 
       const totals = new Map();
-      job.orders.forEach((o) =>
-        o.items.forEach((it) => {
-          const ptId = it.productType.id;
-          if (!totals.has(ptId)) {
-            totals.set(ptId, {
-              type: it.productType.type,
-              byUnit: new Map(),
-            });
-          }
-          const entry = totals.get(ptId);
-          const unit = it.unit || "";
-          const prev = entry.byUnit.get(unit) || 0;
-          entry.byUnit.set(unit, prev + Number(it.quantity));
-        })
-      );
-
-      // Create table for totals
-      const tableData: string[][] = [];
-      totals.forEach((value) => {
-        const unitParts: string[] = [];
-        value.byUnit.forEach((sum: number, unit: string) => {
-          const trimmedUnit = unit.trim();
-          unitParts.push(`${sum}${trimmedUnit ? " x " + trimmedUnit : ""}`);
-        });
-        tableData.push([value.type, unitParts.join(", ")]);
-      });
-
-      // Draw table
-      doc.setFillColor(240, 240, 240);
-      const rowHeight = 7;
-      const col1Width = contentWidth * 0.4;
-      const col2Width = contentWidth * 0.6;
-
-      // Table header
-      doc.setFillColor(52, 152, 219);
-      doc.rect(margin, yPosition, col1Width, rowHeight, "F");
-      doc.rect(margin + col1Width, yPosition, col2Width, rowHeight, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
-      doc.text("Product Type", margin + 2, yPosition + 5);
-      doc.text("Total Quantity", margin + col1Width + 2, yPosition + 5);
-      doc.setTextColor(0, 0, 0);
-      yPosition += rowHeight;
-
-      // Table rows
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      tableData.forEach((row, index) => {
-        if (yPosition > pageHeight - 20) {
-          doc.addPage();
-          yPosition = 15;
-        }
-
-        if (index % 2 === 0) {
-          doc.setFillColor(248, 248, 248);
-          doc.rect(margin, yPosition, contentWidth, rowHeight, "F");
-        }
-
-        doc.setDrawColor(220, 220, 220);
-        doc.rect(margin, yPosition, col1Width, rowHeight, "S");
-        doc.rect(margin + col1Width, yPosition, col2Width, rowHeight, "S");
-
-        doc.text(row[0], margin + 2, yPosition + 5);
-        doc.text(row[1], margin + col1Width + 2, yPosition + 5);
-        yPosition += rowHeight;
-      });
-
-      yPosition += 8;
+      // ProductType aggregation removed
 
       // Detailed Orders
       if (yPosition > pageHeight - 30) {
@@ -271,7 +196,7 @@ export async function generateJobOrderPDF(
             year: "numeric",
             month: "short",
             day: "numeric",
-          }
+          },
         );
         doc.text(`Order #${order.orderNumber}`, margin + 2, yPosition + 5.5);
         doc.setFont("helvetica", "normal");
@@ -294,7 +219,7 @@ export async function generateJobOrderPDF(
         doc.setFontSize(8);
         doc.setFont("helvetica", "bold");
         doc.text("Quantity", margin + 2, yPosition + 4);
-        doc.text("Product Type", margin + itemCol1 + 2, yPosition + 4);
+        doc.text("Product", margin + itemCol1 + 2, yPosition + 4);
         doc.setTextColor(0, 0, 0);
         yPosition += itemRowHeight;
 
@@ -321,7 +246,7 @@ export async function generateJobOrderPDF(
 
           doc.setFontSize(8);
           doc.text(qtyText, margin + 2, yPosition + 4);
-          doc.text(item.productType.type, margin + itemCol1 + 2, yPosition + 4);
+          doc.text("-", margin + itemCol1 + 2, yPosition + 4); // No productType
           yPosition += itemRowHeight;
         });
 

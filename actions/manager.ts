@@ -50,7 +50,7 @@ export async function getManagerById(id: string) {
             supplier: true,
             jobProducts: {
               include: {
-                productType: true,
+                product: true,
               },
             },
           },
@@ -65,7 +65,7 @@ export async function getManagerById(id: string) {
 
 export async function updateManager(
   id: string,
-  data: { name?: string; phone?: string; email?: string }
+  data: { name?: string; phone?: string; email?: string },
 ) {
   try {
     const manager = await prisma.manager.update({

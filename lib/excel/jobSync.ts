@@ -1,6 +1,73 @@
+// Extract jobs from Excel for office agent (no DB writes)
+import type { IncomingJob } from "@/app/api/sync/jobs/route";
+export function extractJobsFromExcel(input: { filePath: string; sheetName?: string }): IncomingJob[] {
+  const xlsx = require("xlsx");
+  const path = require("path");
+  const fileName = input.filePath ? path.basename(input.filePath) : "uploaded.xlsx";
+  let wb;
+  try {
+    wb = xlsx.readFile(input.filePath, { cellDates: true });
+  } catch (e: any) {
+    throw new Error(`Failed to read Excel: ${e && e.message ? e.message : String(e)}`);
+  }
+  const sheetNames = wb.SheetNames || [];
+  if (sheetNames.length === 0) throw new Error("Workbook has no sheets");
+  const selectedSheetName = input.sheetName && sheetNames.includes(input.sheetName)
+    ? input.sheetName
+    : sheetNames[0];
+  const ws = wb.Sheets[selectedSheetName];
+  if (!ws) throw new Error("Selected sheet not found");
+  const rows = xlsx.utils.sheet_to_json(ws, {
+    header: 1,
+    blankrows: false,
+    defval: "",
+    raw: false,
+  });
+  if (rows.length < 2) return [];
+  const headerRow = rows[0].map((h: any) => String(h || "").trim());
+  // Map headers to canonical keys
+  const HEADER_ALIASES: { [key: string]: string } = {
+    "job": "jobNumber",
+    "job number": "jobNumber",
+    "job nr": "jobNumber",
+    "job no": "jobNumber",
+    "job no.": "jobNumber",
+    "job #": "jobNumber",
+    "job#": "jobNumber",
+    "job name": "siteName",
+    "company": "client",
+    "client": "client",
+    "supervis": "managerName",
+    "supervisor": "managerName",
+  };
+  function normalizeHeader(s: string) {
+    return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+  }
+  const headerMap = new Map();
+  headerRow.forEach((h: string, idx: number) => {
+    const nh = normalizeHeader(h);
+    const canonical = (HEADER_ALIASES as any)[nh];
+    if (canonical && !headerMap.has(canonical)) headerMap.set(canonical, idx);
+  });
+  const jobNumberIdx = headerMap.get("jobNumber");
+  const siteNameIdx = headerMap.get("siteName");
+  const clientIdx = headerMap.get("client");
+  const managerNameIdx = headerMap.get("managerName");
+  const jobs: IncomingJob[] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const jobNumber = row[jobNumberIdx] ? String(row[jobNumberIdx]).replace(/\.0$/, "").trim() : "";
+    const siteName = row[siteNameIdx] ? String(row[siteNameIdx]).trim() : "";
+    const client = clientIdx !== undefined ? String(row[clientIdx] || "").trim() : undefined;
+    const managerNameRaw = managerNameIdx !== undefined ? String(row[managerNameIdx] || "").trim() : undefined;
+    if (!jobNumber || !siteName) continue;
+    jobs.push({ jobNumber, siteName, client, managerNameRaw });
+  }
+  return jobs;
+}
 // src/lib/excel/jobSync.ts
 import path from "node:path";
-import xlsx from "xlsx";
+import * as xlsx from "xlsx";
 import { prisma } from "../prisma";
 import { JobSource } from "@prisma/client";
 
@@ -27,9 +94,10 @@ type SyncSummary = {
   updated: number;
   protectedAppJobs: number;
   errors: number;
-  dryRun?: boolean; // ✅ optional
-  wouldCreate?: number; // ✅ optional
-  wouldUpdate?: number; // ✅ optional
+  dryRun?: boolean;
+  wouldCreate?: number;
+  wouldUpdate?: number;
+  skippedBelowMin?: number;
 };
 
 function normalizeHeader(s: string) {
@@ -53,37 +121,24 @@ function normalizeName(s: string) {
 
 const HEADER_ALIASES: Record<string, string> = {
   // jobNumber
+  "job": "jobNumber",
   "job number": "jobNumber",
+  "job nr": "jobNumber",
   "job no": "jobNumber",
   "job no.": "jobNumber",
   "job #": "jobNumber",
   "job#": "jobNumber",
-  job: "jobNumber",
-  jobnum: "jobNumber",
 
   // siteName
-  "site name": "siteName",
-  site: "siteName",
-  project: "siteName",
-  "project name": "siteName",
-  "site/project": "siteName",
+  "job name": "siteName",
 
   // client
-  client: "client",
-  "client name": "client",
-  company: "client",
-  "company name": "client",
-  customer: "client",
+  "company": "client",
+  "client": "client",
 
-  // manager
-  manager: "managerName",
-  "manager name": "managerName",
-  "project manager": "managerName",
-  pm: "managerName",
-
-  // supplier
-  supplier: "supplierName",
-  "supplier name": "supplierName",
+  // managerNameRaw
+  "supervis": "managerName",
+  "supervisor": "managerName",
 };
 
 function mapHeaders(rawHeaders: string[]) {
@@ -95,6 +150,11 @@ function mapHeaders(rawHeaders: string[]) {
     if (canonical && !map.has(canonical)) map.set(canonical, idx);
   });
   return map;
+}
+
+function getVal(row: any[], idx?: number) {
+  if (typeof idx !== "number" || idx < 0) return "";
+  return String(row[idx] ?? "").trim();
 }
 
 function getCell(row: any[], idx?: number) {
@@ -236,13 +296,15 @@ export async function syncJobsFromExcel(input: SyncInput) {
   }
 
   const headerRow = rows[0].map((h) => toStringSafe(h));
+  console.log('Excel header row:', headerRow);
   const headerMap = mapHeaders(headerRow);
+  console.log('HeaderMap:', Array.from(headerMap.entries()));
+
 
   const jobNumberIdx = headerMap.get("jobNumber");
   const siteNameIdx = headerMap.get("siteName");
   const clientIdx = headerMap.get("client");
   const managerNameIdx = headerMap.get("managerName");
-  const supplierNameIdx = headerMap.get("supplierName");
 
   const errors: SyncError[] = [];
 
@@ -252,115 +314,67 @@ export async function syncJobsFromExcel(input: SyncInput) {
   let protectedAppJobs = 0;
   let wouldCreate = 0;
   let wouldUpdate = 0;
+  let skippedBelowMin = 0;
 
-  // Basic duplicate detection within this sheet
-  const seenJobNumbers = new Set<string>();
-  const now = new Date();
 
+  // Helper for skip logging
   function explainSkip(rowIndex: number, reason: string, row: any) {
     if (skipped < 10) {
       console.log(`[SKIP row ${rowIndex}] ${reason}`);
-      if (Array.isArray(row)) {
-        console.log("Row sample:", row);
-      } else {
-        console.log("Row keys:", Object.keys(row));
-        console.log("Row sample:", row);
-      }
+      console.log("Row sample:", row);
       console.log("----");
     }
   }
 
-  // Helper to pick value from possible keys
-  function pick(row: any, keys: string[]) {
-    if (Array.isArray(row)) return "";
-    for (const k of keys) {
-      if (
-        row[k] !== undefined &&
-        row[k] !== null &&
-        String(row[k]).trim() !== ""
-      ) {
-        return row[k];
-      }
-    }
-    return "";
-  }
+  const seenJobNumbers = new Set<string>();
+  const now = new Date();
 
-  // Convert rows to object if possible (header-based)
-  let objectRows: any[] = [];
-  if (rows.length > 1 && rows[0].length > 0) {
-    const headers = rows[0].map((h: any) => String(h).trim());
-    for (let i = 1; i < rows.length; i++) {
-      const obj: any = {};
-      for (let j = 0; j < headers.length; j++) {
-        obj[headers[j]] = rows[i][j];
-      }
-      objectRows.push(obj);
-    }
-  }
+  // Read min job number threshold from env
+  const minJobNum = Number.parseInt(process.env.EXCEL_MIN_JOB_NUMBER || "0", 10);
 
-  for (let i = 0; i < objectRows.length; i++) {
-    const r = objectRows[i];
-    const excelRowNumber = i + 2; // 1-based, includes header row
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const excelRowNumber = i + 1; // 1-based, includes header row
     const rowRef = `${selectedSheetName}:R${excelRowNumber}`;
-
     try {
-      // Flexible mapping
-      const jobNumberRaw = pick(r, [
-        "Job",
-        "JOB",
-        "Job No",
-        "Job#",
-        "Job Number",
-        "jobNumber",
-      ]);
-      const siteNameRaw = pick(r, [
-        "Job Name",
-        "JOB NAME",
-        "Site Name",
-        "Project",
-        "Project Name",
-        "siteName",
-      ]);
-      const clientRaw = pick(r, [
-        "Company",
-        "COMPANY",
-        "Client",
-        "Client/Company",
-        "client",
-      ]);
-      const managerRaw = pick(r, [
-        "Supervisor",
-        "Supervis",
-        "Manager",
-        "Supervisor Name",
-        "managerName",
-      ]);
+      let jobNumber = getVal(row, jobNumberIdx).replace(/\.0$/, "");
+      if (i <= 10) {
+        const rawJobNum = (typeof jobNumberIdx === "number" && jobNumberIdx >= 0) ? row[jobNumberIdx] : undefined;
+        console.log(`[DEBUG] Row ${excelRowNumber} jobNumber:`, jobNumber, 'Raw:', rawJobNum);
+      }
+      let siteName = getVal(row, siteNameIdx);
+      let client = getVal(row, clientIdx) || null;
+      let managerNameRaw = getVal(row, managerNameIdx) || null;
 
-      let jobNumber = String(jobNumberRaw ?? "").trim();
-      // Remove trailing .0 if present (Excel sometimes outputs numbers as floats)
-      jobNumber = jobNumber.replace(/\.0$/, "");
-      const siteName = String(siteNameRaw ?? "").trim();
-      const client = String(clientRaw ?? "").trim() || null;
-      const managerNameRaw = String(managerRaw ?? "").trim() || null;
+      // Parse job number as integer for filtering
+      const jobNumInt = Number.parseInt(jobNumber.replace(/\D/g, ""), 10);
+      if (!Number.isFinite(jobNumInt)) {
+        skipped++;
+        explainSkip(excelRowNumber, "Invalid jobNumber (not a number)", row);
+        continue;
+      }
+      if (jobNumInt < minJobNum) {
+        skippedBelowMin++;
+        if (skippedBelowMin <= 10) {
+          console.log(`[SKIP row ${excelRowNumber}] jobNumber ${jobNumber} < min (${minJobNum})`);
+        }
+        continue;
+      }
 
       if (!jobNumber) {
         skipped++;
-        explainSkip(excelRowNumber, "Missing jobNumber", r);
+        explainSkip(excelRowNumber, "Missing jobNumber", row);
         continue;
       }
       if (!siteName) {
         skipped++;
-        explainSkip(excelRowNumber, "Missing siteName", r);
+        explainSkip(excelRowNumber, "Missing siteName", row);
         continue;
       }
 
       seenJobNumbers.add(jobNumber);
 
-      // Manager/Supplier mapping (optional)
-      const managerId = managerNameRaw
-        ? await findManagerIdByName(managerNameRaw)
-        : null;
-      // Supplier mapping can be added similarly if needed
+      // No manager lookup for now, just store managerNameRaw
 
       const existing = await prisma.job.findUnique({
         where: { jobNumber },
@@ -397,19 +411,16 @@ export async function syncJobsFromExcel(input: SyncInput) {
           excelFileName: fileName,
           excelSheetName: selectedSheetName,
           excelRowRef: rowRef,
-          managerId: managerId ?? null,
-          managerNameRaw: managerId ? null : managerNameRaw || null,
+          managerNameRaw,
         },
         update: {
           siteName,
           client,
-          source: JobSource.EXCEL,
           importedAt: now,
           excelFileName: fileName,
           excelSheetName: selectedSheetName,
           excelRowRef: rowRef,
-          managerId: managerId ?? null,
-          managerNameRaw: managerId ? null : managerNameRaw || null,
+          managerNameRaw,
         },
         select: { id: true, createdAt: true, updatedAt: true },
       });
@@ -436,8 +447,12 @@ export async function syncJobsFromExcel(input: SyncInput) {
     dryRun: !!input.dryRun,
     wouldCreate: input.dryRun ? wouldCreate : 0,
     wouldUpdate: input.dryRun ? wouldUpdate : 0,
+    skippedBelowMin,
   };
 
+  if (skippedBelowMin > 0) {
+    console.log(`SkippedBelowMin: ${skippedBelowMin} (min job number: ${minJobNum})`);
+  }
   return {
     success: errors.length === 0,
     summary,

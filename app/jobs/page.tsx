@@ -1,5 +1,6 @@
 import { getAllJobs } from "@/actions/job";
 import { CreateJobDialog } from "@/components/dialogs/create-job";
+import { SyncJobsButton } from "@/components/common/SyncJobsButton";
 import { JobsDataTable } from "@/components/jobs/jobs-data-table";
 
 export default async function JobsPage() {
@@ -20,7 +21,10 @@ export default async function JobsPage() {
               place
             </p>
           </div>
-          <CreateJobDialog />
+          <div className="flex gap-2 items-center">
+            <CreateJobDialog />
+            <SyncJobsButton />
+          </div>
         </div>
         <JobsDataTable jobs={jobs} />
       </div>

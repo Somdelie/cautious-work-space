@@ -180,39 +180,51 @@ export async function updateJob(
   data: {
     jobNumber?: string;
     siteName?: string;
-    client?: string;
-    managerId?: string;
-    supplierId?: string;
-    productTypeIds?: string[];
+    client?: string | null;
+    managerId?: string | null;
+    supplierId?: string | null;
     specPdfUrl?: string | null;
     boqPdfUrl?: string | null;
+
+    // ✅ NEW
+    isStarted?: boolean;
+    isFinished?: boolean;
   },
 ) {
   try {
-    const updateData: {
-      jobNumber?: string;
-      siteName?: string;
-      client?: string;
-      managerId?: string;
-      supplierId?: string;
-      productTypes?: { set: Array<{ id: string }> };
-      specPdfUrl?: string | null;
-      boqPdfUrl?: string | null;
-    } = {
+    const updateData: any = {
       jobNumber: data.jobNumber,
       siteName: data.siteName,
-      client: data.client,
-      managerId: data.managerId,
-      supplierId: data.supplierId,
-      specPdfUrl: data.specPdfUrl,
-      boqPdfUrl: data.boqPdfUrl,
+      client: data.client ?? undefined,
+      managerId: data.managerId ?? undefined,
+      supplierId: data.supplierId ?? undefined,
+      specPdfUrl: data.specPdfUrl ?? undefined,
+      boqPdfUrl: data.boqPdfUrl ?? undefined,
     };
 
-    // Update product types if provided
-    if (data.productTypeIds !== undefined) {
-      updateData.productTypes = {
-        set: data.productTypeIds.map((id) => ({ id })),
-      };
+    // ✅ status logic (keep timestamps consistent)
+    if (typeof data.isStarted === "boolean") {
+      updateData.isStarted = data.isStarted;
+      updateData.startedAt = data.isStarted ? new Date() : null;
+
+      // if you unstart a job, also unfinish it
+      if (!data.isStarted) {
+        updateData.isFinished = false;
+        updateData.finishedAt = null;
+      }
+    }
+
+    if (typeof data.isFinished === "boolean") {
+      updateData.isFinished = data.isFinished;
+
+      if (data.isFinished) {
+        // finishing implies started
+        updateData.isStarted = true;
+        updateData.startedAt = updateData.startedAt ?? new Date();
+        updateData.finishedAt = new Date();
+      } else {
+        updateData.finishedAt = null;
+      }
     }
 
     const job = await prisma.job.update({
@@ -221,20 +233,68 @@ export async function updateJob(
       include: {
         manager: true,
         supplier: true,
-        jobProducts: {
-          include: {
-            product: true,
-          },
-        },
+        jobProducts: { include: { product: true } },
       },
     });
+
     revalidatePath("/jobs");
     revalidatePath(`/jobs/${id}`);
     return { success: true, data: job };
-  } catch {
-    return { success: false, error: "Failed to update job" };
+  } catch (e: any) {
+    return { success: false, error: e?.message ?? "Failed to update job" };
   }
 }
+
+export async function setJobProducts(
+  jobId: string,
+  payload: {
+    items: Array<{
+      productId: string;
+      required?: boolean;
+      quantity?: number | null;
+      unit?: string | null;
+    }>;
+  },
+) {
+  try {
+    // basic validation
+    const clean = (payload.items ?? [])
+      .filter((x) => x.productId)
+      .map((x) => ({
+        productId: x.productId,
+        required: Boolean(x.required),
+        quantity:
+          x.quantity === null || x.quantity === undefined
+            ? null
+            : Number(x.quantity),
+        unit: x.unit ? String(x.unit).trim() || null : null,
+      }));
+
+    await prisma.$transaction(async (tx) => {
+      // replace-mode (simple + reliable)
+      await tx.jobProduct.deleteMany({ where: { jobId } });
+
+      if (clean.length) {
+        await tx.jobProduct.createMany({
+          data: clean.map((x) => ({
+            jobId,
+            productId: x.productId,
+            required: x.required,
+            quantity: x.quantity,
+            unit: x.unit,
+          })),
+        });
+      }
+    });
+
+    revalidatePath("/jobs");
+    revalidatePath(`/jobs/${jobId}`);
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e?.message ?? "Failed to update job products" };
+  }
+}
+
 
 export async function deleteJob(id: string) {
   try {

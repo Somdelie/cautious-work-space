@@ -1,104 +1,111 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+// app/api/sync/jobs/route.ts
+import { NextRequest, NextResponse } from "next/server";
+
 import crypto from "node:crypto";
+import { prisma } from "@/lib/prisma";
+import { JobSource } from "@prisma/client";
 
-// ✅ Simple shared-secret auth (set this in Vercel + your office PC env)
-function verifyToken(req: Request) {
-  const token = req.headers.get("x-sync-token");
-  const expected = process.env.EXCEL_SYNC_TOKEN;
-  if (!expected) throw new Error("Missing EXCEL_SYNC_TOKEN env var on server");
-  return (
-    token && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected))
-  );
-}
-
-type IncomingJob = {
-  jobNumber: string;
-  siteName: string;
-  client?: string | null;
-
-  // optional fields from excel
-  managerNameRaw?: string | null;
-
-  // excel tracking
-  excelFileName?: string | null;
-  excelSheetName?: string | null;
-  excelRowRef?: string | null;
+type DebugFileInfo = {
+  name: string;
+  ext: string | null;
+  size: number | null;
+  isFile?: boolean;
+  isDirectory?: boolean;
+  created: Date | null;
+  modified: Date | null;
+  error: string | null;
 };
 
-export async function POST(req: Request) {
+function safeEqual(a: string, b: string) {
+  const aa = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (aa.length !== bb.length) return false;
+  return crypto.timingSafeEqual(aa, bb);
+}
+
+function verifyToken(req: Request) {
+  const token = req.headers.get("x-sync-token") || "";
+  const expected = process.env.EXCEL_SYNC_TOKEN || "";
+  if (!expected) throw new Error("Missing EXCEL_SYNC_TOKEN on server");
+  return safeEqual(token, expected);
+}
+
+export async function GET() {
+  // Guard: never allow UNC/file access on Vercel
+  return NextResponse.json({ error: "UNC/file access is disabled in production." }, { status: 403 });
+}
+
+
+
+export type IncomingJob = {
+  jobNumber: string;
+  siteName: string;
+  client?: string;
+  managerNameRaw?: string;
+  managerId?: string | null;
+  supplierId?: string | null;
+};
+
+export async function POST(req: NextRequest) {
   try {
+    if (process.env.ALLOW_UNC_READ === "true") {
+      // Guard: never allow UNC/file access on Vercel
+      return NextResponse.json({ error: "UNC/file access is not allowed in production." }, { status: 403 });
+    }
     if (!verifyToken(req)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    const body = (await req.json()) as { jobs: IncomingJob[] };
-
-    if (!body?.jobs?.length) {
-      return NextResponse.json({ error: "Missing jobs[]" }, { status: 400 });
+    const body = await req.json().catch(() => null);
+    const jobs = body && Array.isArray(body.jobs) ? body.jobs : null;
+    if (!jobs || jobs.length === 0) {
+      return NextResponse.json({ error: "Request body must be { jobs: IncomingJob[] }" }, { status: 400 });
     }
-
+    let created = 0;
+    let updated = 0;
+    let errors: { jobNumber: string; message: string }[] = [];
     const now = new Date();
-
-    // ✅ Upsert by jobNumber (unique)
-    const results = await prisma.$transaction(
-      body.jobs.map((j) => {
-        const jobNumber = String(j.jobNumber || "").trim();
-        const siteName = String(j.siteName || "").trim();
-
-        if (!jobNumber || !siteName) {
-          // skip invalid row
-          return prisma.job.findFirst({ where: { id: "__never__" } });
+    for (const job of jobs) {
+      try {
+        if (!job.jobNumber || !job.siteName) {
+          errors.push({ jobNumber: job.jobNumber || "", message: "Missing jobNumber or siteName" });
+          continue;
         }
-
-        return prisma.job.upsert({
-          where: { jobNumber },
-          update: {
-            siteName,
-            client: j.client ?? null,
-
-            source: "EXCEL",
-            importedAt: now,
-            excelFileName: j.excelFileName ?? null,
-            excelSheetName: j.excelSheetName ?? null,
-            excelRowRef: j.excelRowRef ?? null,
-
-            // manager chosen in excel (raw text for now)
-            managerNameRaw: j.managerNameRaw ?? null,
-
-            // IMPORTANT: don't overwrite managerId/supplierId from app if already set.
-            // Keep these as-is unless you explicitly want excel to control them too.
-          },
+        const existing = await prisma.job.findUnique({ where: { jobNumber: job.jobNumber }, select: { id: true, source: true, managerId: true, supplierId: true } });
+        if (existing && existing.source === JobSource.APP) {
+          // Do not overwrite jobs created in the app
+          continue;
+        }
+        await prisma.job.upsert({
+          where: { jobNumber: job.jobNumber },
           create: {
-            jobNumber,
-            siteName,
-            client: j.client ?? null,
-
-            source: "EXCEL",
+            jobNumber: job.jobNumber,
+            siteName: job.siteName,
+            client: job.client || null,
+            source: JobSource.EXCEL,
             importedAt: now,
-            excelFileName: j.excelFileName ?? null,
-            excelSheetName: j.excelSheetName ?? null,
-            excelRowRef: j.excelRowRef ?? null,
-            managerNameRaw: j.managerNameRaw ?? null,
+            managerNameRaw: job.managerNameRaw || null,
+            managerId: job.managerId || null,
+            supplierId: job.supplierId || null,
           },
-          select: { id: true, jobNumber: true },
+          update: {
+            siteName: job.siteName,
+            client: job.client || null,
+            importedAt: now,
+            managerNameRaw: job.managerNameRaw || null,
+            // Only set managerId/supplierId if not already set
+            managerId: existing && existing.managerId ? existing.managerId : (job.managerId || null),
+            supplierId: existing && existing.supplierId ? existing.supplierId : (job.supplierId || null),
+          },
         });
-      }),
-    );
-
-    // results includes placeholders for skipped rows; filter them
-    const saved = results.filter(Boolean);
-
-    return NextResponse.json({ success: true, count: saved.length, saved });
-  } catch (err: any) {
-    console.error("EXCEL SYNC FAILED:", err?.message ?? err);
-
-    // Optional: alert on failure (Slack webhook or email)
-    // await notifySlack(...)
-
-    return NextResponse.json(
-      { success: false, error: err?.message ?? "Sync failed" },
-      { status: 500 },
-    );
+        if (!existing) created++;
+        else updated++;
+      } catch (e: any) {
+        errors.push({ jobNumber: job.jobNumber, message: e?.message || String(e) });
+      }
+    }
+    return NextResponse.json({ success: errors.length === 0, created, updated, errors });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

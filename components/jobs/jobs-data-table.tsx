@@ -30,19 +30,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DataTable } from "@/components/ui/data-table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ViewJobDialog } from "@/components/dialogs/view-job";
 import { DeleteJobDialog } from "@/components/dialogs/delete-job";
 import { markJobAsStarted, markJobAsFinished } from "@/actions/job";
 import { useRouter } from "next/navigation";
-import { EditProductDialog } from "../dialogs/edit-job";
+import { EditJobDialog } from "../dialogs/edit-job-dialog";
 
 type Job = {
   id: string;
@@ -370,8 +363,8 @@ export function JobsDataTable({ jobs }: { jobs: Job[] }) {
         onOpenChange={setViewDialogOpen}
       />
 
-      <EditProductDialog
-        productId={selectedJobId}
+      <EditJobDialog
+        jobId={selectedJobId}
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
         onSuccess={() => {

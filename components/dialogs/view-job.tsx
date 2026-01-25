@@ -117,6 +117,17 @@ export function ViewJobDialog({
             email: null,
           },
           supplier: raw.supplier ?? { id: "", name: "" },
+          jobProducts: Array.isArray(raw.jobProducts)
+            ? raw.jobProducts.map((jp: any) => ({
+                ...jp,
+                quantity:
+                  typeof jp.quantity === "object" &&
+                  jp.quantity !== null &&
+                  typeof jp.quantity.toNumber === "function"
+                    ? jp.quantity.toNumber()
+                    : jp.quantity,
+              }))
+            : [],
           orders: Array.isArray(raw.orders)
             ? raw.orders.map((order: any) => ({
                 id: order.id,

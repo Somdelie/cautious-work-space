@@ -1,6 +1,5 @@
 "use client";
-import { CreateManagerDialog } from "@/components/dialogs/create-manager";
-import { CreateSupplierDialog } from "@/components/dialogs/create-supplier";
+
 import {
   Card,
   CardContent,
@@ -12,118 +11,154 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
   type ChartConfig,
 } from "@/components/ui/chart";
 import {
   BarChart,
   Bar,
-  LineChart,
-  Line,
-  AreaChart,
-  Area,
-  PieChart,
-  Pie,
-  Cell,
-  RadialBarChart,
-  RadialBar,
-  ComposedChart,
   XAxis,
   YAxis,
   CartesianGrid,
-  Legend,
-  ResponsiveContainer,
+  RadialBar,
+  RadialBarChart,
+  AreaChart,
+  Area,
 } from "recharts";
 import { CreateJobDialog } from "../dialogs/create-job";
+import { CreateSupplierDialog } from "@/components/dialogs/create-supplier";
+import { CreateManagerDialog } from "@/components/dialogs/create-manager";
 import { CreateProductDialog } from "../dialogs/create-product";
+import { JobStatusCard } from "../dashboard/JobStatusCard";
 
-const BottomCharts = () => {
-  // Sample data for different charts
-  const monthlyData = [
-    { month: "Jan", sales: 4000, revenue: 2400, profit: 1200 },
-    { month: "Feb", sales: 3000, revenue: 1398, profit: 900 },
-    { month: "Mar", sales: 5000, revenue: 3800, profit: 1800 },
-    { month: "Apr", sales: 4780, revenue: 3908, profit: 2100 },
-    { month: "May", sales: 5890, revenue: 4800, profit: 2400 },
-    { month: "Jun", sales: 4390, revenue: 3800, profit: 1900 },
-    { month: "Jul", sales: 4490, revenue: 4300, profit: 2000 },
-    { month: "Aug", sales: 5290, revenue: 5000, profit: 2500 },
-    { month: "Sep", sales: 6000, revenue: 5200, profit: 2700 },
-    { month: "Oct", sales: 7000, revenue: 6000, profit: 3000 },
-    { month: "Nov", sales: 8000, revenue: 7000, profit: 3500 },
-    { month: "Dec", sales: 9000, revenue: 8000, profit: 4000 },
-  ];
+type JobsByMonth = { month: string; created: number; finished: number };
+type OrdersByMonth = { month: string; orders: number; subtotal: number };
+type StatusPoint = {
+  name: "Not started" | "Ongoing" | "Finished";
+  value: number;
+};
 
-  // Chart configs
-  const barChartConfig = {
-    sales: { label: "Sales", color: "#1e5a8a" },
-    revenue: { label: "Revenue", color: "#2ba3c1" },
+export default function BottomCharts({
+  jobsByMonth,
+  ordersByMonth,
+  jobStatusBreakdown,
+}: {
+  jobsByMonth: JobsByMonth[];
+  ordersByMonth: OrdersByMonth[];
+  jobStatusBreakdown: StatusPoint[];
+}) {
+  const jobsConfig = {
+    created: { label: "Jobs created", color: "#8b5cf6" },
+    finished: { label: "Jobs finished", color: "#10b981" },
+  } satisfies ChartConfig;
+
+  const ordersConfig = {
+    orders: { label: "Orders", color: "#3b82f6" },
+    subtotal: { label: "Order value", color: "#f59e0b" },
+  } satisfies ChartConfig;
+
+  const statusConfig = {
+    value: { label: "Jobs", color: "#2ba3c1" },
   } satisfies ChartConfig;
 
   return (
-    <div className="w-full grid">
-      {/* Row 1: Bar Charts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {/* Grouped Bar Chart */}
-        <Card className="col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Grouped Bar Chart</CardTitle>
-            <CardDescription>Sales vs Revenue comparison</CardDescription>
+    <div className="w-full space-y-3">
+      {/* Top Grid */}
+      <div className="grid w-full grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {/* Stacked Area Chart - Jobs by month */}
+        <Card className="col-span-1 md:col-span-2 border-green-800 border-2 bg-green-950/90">
+          <CardHeader className="pb-2 flex justify-between items-center">
+            <CardTitle className="text-muted-foreground">
+              Jobs per month
+            </CardTitle>
+            <CardDescription>Added vs Finished</CardDescription>
           </CardHeader>
           <CardContent>
-            <ChartContainer
-              config={barChartConfig}
-              className="h-[200px] w-full"
-            >
-              <BarChart data={monthlyData}>
+            <ChartContainer config={jobsConfig} className="h-[180px] w-full">
+              <AreaChart data={jobsByMonth}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="month" tickLine={false} axisLine={false} />
                 <YAxis tickLine={false} axisLine={false} />
                 <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar
-                  dataKey="sales"
-                  fill="var(--color-sales)"
-                  radius={[4, 4, 0, 0]}
+                <Area
+                  type="monotone"
+                  dataKey="created"
+                  stackId="1"
+                  stroke="var(--color-created)"
+                  fill="var(--color-created)"
+                  fillOpacity={0.6}
                 />
-                <Bar
-                  dataKey="revenue"
-                  fill="var(--color-revenue)"
-                  radius={[4, 4, 0, 0]}
+                <Area
+                  type="monotone"
+                  dataKey="finished"
+                  stackId="1"
+                  stroke="var(--color-finished)"
+                  fill="var(--color-finished)"
+                  fillOpacity={0.6}
                 />
-              </BarChart>
+              </AreaChart>
             </ChartContainer>
           </CardContent>
         </Card>
 
-        {/*quick actions */}
-        <Card className="">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Quick Actions</CardTitle>
-            <CardDescription>Access common tasks quickly</CardDescription>
+        {/* Quick actions */}
+        <Card className="w-full gap-0">
+          <CardHeader className="py-0">
+            <CardTitle className="text-muted-foreground">
+              Quick Actions
+            </CardTitle>
+            {/* <CardDescription>Access common tasks quickly</CardDescription> */}
           </CardHeader>
-          <CardContent className="flex flex-col w-full gap-2">
-            {/* add supplier */}
+          <CardContent className="flex flex-col w-full gap-2 py-0">
             <div className="w-full p-1 dark:bg-slate-900 border border-gray-300 dark:border-slate-800">
               <CreateJobDialog />
             </div>
-            {/* add supplier */}
             <div className="w-full p-1 dark:bg-slate-900 border border-gray-300 dark:border-slate-800">
               <CreateSupplierDialog />
             </div>
-            {/* add manager */}
             <div className="w-full p-1 dark:bg-slate-900 border border-gray-300 dark:border-slate-800">
               <CreateManagerDialog />
             </div>
-            {/* add product */}
             <div className="w-full p-1 dark:bg-slate-900 border border-gray-300 dark:border-slate-800">
               <CreateProductDialog />
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Bottom Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {/* Radial Bar Chart - Status breakdown */}
+        <JobStatusCard jobStatusBreakdown={jobStatusBreakdown} />
+        {/* Grouped Bar Chart - Orders by month */}
+        <Card className="col-span-1 md:col-span-2 bg-sky-900/90 border-sky-800 border-2">
+          <CardHeader className="pb-2 flex justify-between items-center">
+            <CardTitle className="text-muted-foreground">
+              Orders per month
+            </CardTitle>
+            <CardDescription>Count and total value</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={ordersConfig} className="h-[180px] w-full">
+              <BarChart data={ordersByMonth}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="month" tickLine={false} axisLine={false} />
+                <YAxis tickLine={false} axisLine={false} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar
+                  dataKey="orders"
+                  fill="var(--color-orders)"
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar
+                  dataKey="subtotal"
+                  fill="var(--color-subtotal)"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
-};
-
-export default BottomCharts;
+}

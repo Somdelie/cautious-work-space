@@ -1,20 +1,28 @@
 // Extract jobs from Excel for office agent (no DB writes)
 import type { IncomingJob } from "@/app/api/sync/jobs/route";
-export function extractJobsFromExcel(input: { filePath: string; sheetName?: string }): IncomingJob[] {
+export async function extractJobsFromExcel(input: {
+  filePath: string;
+  sheetName?: string;
+}): Promise<IncomingJob[]> {
   const xlsx = require("xlsx");
   const path = require("path");
-  const fileName = input.filePath ? path.basename(input.filePath) : "uploaded.xlsx";
+  const fileName = input.filePath
+    ? path.basename(input.filePath)
+    : "uploaded.xlsx";
   let wb;
   try {
     wb = xlsx.readFile(input.filePath, { cellDates: true });
   } catch (e: any) {
-    throw new Error(`Failed to read Excel: ${e && e.message ? e.message : String(e)}`);
+    throw new Error(
+      `Failed to read Excel: ${e && e.message ? e.message : String(e)}`,
+    );
   }
   const sheetNames = wb.SheetNames || [];
   if (sheetNames.length === 0) throw new Error("Workbook has no sheets");
-  const selectedSheetName = input.sheetName && sheetNames.includes(input.sheetName)
-    ? input.sheetName
-    : sheetNames[0];
+  const selectedSheetName =
+    input.sheetName && sheetNames.includes(input.sheetName)
+      ? input.sheetName
+      : sheetNames[0];
   const ws = wb.Sheets[selectedSheetName];
   if (!ws) throw new Error("Selected sheet not found");
   const rows = xlsx.utils.sheet_to_json(ws, {
@@ -27,7 +35,7 @@ export function extractJobsFromExcel(input: { filePath: string; sheetName?: stri
   const headerRow = rows[0].map((h: any) => String(h || "").trim());
   // Map headers to canonical keys
   const HEADER_ALIASES: { [key: string]: string } = {
-    "job": "jobNumber",
+    job: "jobNumber",
     "job number": "jobNumber",
     "job nr": "jobNumber",
     "job no": "jobNumber",
@@ -35,13 +43,16 @@ export function extractJobsFromExcel(input: { filePath: string; sheetName?: stri
     "job #": "jobNumber",
     "job#": "jobNumber",
     "job name": "siteName",
-    "company": "client",
-    "client": "client",
-    "supervis": "managerName",
-    "supervisor": "managerName",
+    company: "client",
+    client: "client",
+    supervis: "managerName",
+    supervisor: "managerName",
   };
   function normalizeHeader(s: string) {
-    return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+    return String(s || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
   }
   const headerMap = new Map();
   headerRow.forEach((h: string, idx: number) => {
@@ -56,12 +67,22 @@ export function extractJobsFromExcel(input: { filePath: string; sheetName?: stri
   const jobs: IncomingJob[] = [];
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
-    const jobNumber = row[jobNumberIdx] ? String(row[jobNumberIdx]).replace(/\.0$/, "").trim() : "";
+    const jobNumber = row[jobNumberIdx]
+      ? String(row[jobNumberIdx]).replace(/\.0$/, "").trim()
+      : "";
     const siteName = row[siteNameIdx] ? String(row[siteNameIdx]).trim() : "";
-    const client = clientIdx !== undefined ? String(row[clientIdx] || "").trim() : undefined;
-    const managerNameRaw = managerNameIdx !== undefined ? String(row[managerNameIdx] || "").trim() : undefined;
+    const client =
+      clientIdx !== undefined ? String(row[clientIdx] || "").trim() : undefined;
+    const managerNameRaw =
+      managerNameIdx !== undefined
+        ? String(row[managerNameIdx] || "").trim()
+        : undefined;
+    let managerId: string | null = null;
+    if (managerNameRaw) {
+      managerId = await findManagerIdByName(managerNameRaw);
+    }
     if (!jobNumber || !siteName) continue;
-    jobs.push({ jobNumber, siteName, client, managerNameRaw });
+    jobs.push({ jobNumber, siteName, client, managerNameRaw, managerId });
   }
   return jobs;
 }
@@ -121,7 +142,7 @@ function normalizeName(s: string) {
 
 const HEADER_ALIASES: Record<string, string> = {
   // jobNumber
-  "job": "jobNumber",
+  job: "jobNumber",
   "job number": "jobNumber",
   "job nr": "jobNumber",
   "job no": "jobNumber",
@@ -133,12 +154,12 @@ const HEADER_ALIASES: Record<string, string> = {
   "job name": "siteName",
 
   // client
-  "company": "client",
-  "client": "client",
+  company: "client",
+  client: "client",
 
   // managerNameRaw
-  "supervis": "managerName",
-  "supervisor": "managerName",
+  supervis: "managerName",
+  supervisor: "managerName",
 };
 
 function mapHeaders(rawHeaders: string[]) {
@@ -171,18 +192,48 @@ function toStringSafe(v: any) {
 }
 
 async function findManagerIdByName(rawManager: string) {
+  // Stricter normalization: trim, collapse spaces, lowercase
   const name = normalizeName(rawManager);
-  if (!name) return null;
+  if (!name) {
+    console.log(
+      `[ManagerLookup] Empty manager name after normalization for raw: '${rawManager}'`,
+    );
+    return null;
+  }
 
-  // basic case-insensitive match
+  // Print all manager names in DB for debugging
+  const allManagers = await prisma.manager.findMany({
+    select: { id: true, name: true },
+  });
+  const normalizedManagers = allManagers.map((m) => ({
+    id: m.id,
+    name: m.name,
+    normalized: normalizeName(m.name),
+  }));
+  console.log(`[ManagerLookup] Looking for: '${name}' (raw: '${rawManager}')`);
+  console.log(`[ManagerLookup] All managers:`, normalizedManagers);
+
+  // Try to match normalized name
+  const found = normalizedManagers.find((m) => m.normalized === name);
+  if (found) {
+    console.log(`[ManagerLookup] Match found:`, found);
+    return found.id;
+  }
+
+  // Fallback: DB query (case-insensitive, just in case)
   const m = await prisma.manager.findFirst({
     where: {
       name: { equals: name, mode: "insensitive" },
     },
     select: { id: true },
   });
+  if (m) {
+    console.log(`[ManagerLookup] DB match found for '${name}':`, m);
+    return m.id;
+  }
 
-  return m?.id ?? null;
+  console.log(`[ManagerLookup] No match for: '${name}' (raw: '${rawManager}')`);
+  return null;
 }
 
 async function findSupplierIdByName(rawSupplier: string) {
@@ -296,10 +347,9 @@ export async function syncJobsFromExcel(input: SyncInput) {
   }
 
   const headerRow = rows[0].map((h) => toStringSafe(h));
-  console.log('Excel header row:', headerRow);
+  console.log("Excel header row:", headerRow);
   const headerMap = mapHeaders(headerRow);
-  console.log('HeaderMap:', Array.from(headerMap.entries()));
-
+  console.log("HeaderMap:", Array.from(headerMap.entries()));
 
   const jobNumberIdx = headerMap.get("jobNumber");
   const siteNameIdx = headerMap.get("siteName");
@@ -316,7 +366,6 @@ export async function syncJobsFromExcel(input: SyncInput) {
   let wouldUpdate = 0;
   let skippedBelowMin = 0;
 
-
   // Helper for skip logging
   function explainSkip(rowIndex: number, reason: string, row: any) {
     if (skipped < 10) {
@@ -330,110 +379,107 @@ export async function syncJobsFromExcel(input: SyncInput) {
   const now = new Date();
 
   // Read min job number threshold from env
-  const minJobNum = Number.parseInt(process.env.EXCEL_MIN_JOB_NUMBER || "0", 10);
+  const minJobNum = Number.parseInt(
+    process.env.EXCEL_MIN_JOB_NUMBER || "0",
+    10,
+  );
 
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
-    const excelRowNumber = i + 1; // 1-based, includes header row
-    const rowRef = `${selectedSheetName}:R${excelRowNumber}`;
-    try {
-      let jobNumber = getVal(row, jobNumberIdx).replace(/\.0$/, "");
-      if (i <= 10) {
-        const rawJobNum = (typeof jobNumberIdx === "number" && jobNumberIdx >= 0) ? row[jobNumberIdx] : undefined;
-        console.log(`[DEBUG] Row ${excelRowNumber} jobNumber:`, jobNumber, 'Raw:', rawJobNum);
-      }
-      let siteName = getVal(row, siteNameIdx);
-      let client = getVal(row, clientIdx) || null;
-      let managerNameRaw = getVal(row, managerNameIdx) || null;
-
-      // Parse job number as integer for filtering
-      const jobNumInt = Number.parseInt(jobNumber.replace(/\D/g, ""), 10);
-      if (!Number.isFinite(jobNumInt)) {
-        skipped++;
-        explainSkip(excelRowNumber, "Invalid jobNumber (not a number)", row);
-        continue;
-      }
-      if (jobNumInt < minJobNum) {
-        skippedBelowMin++;
-        if (skippedBelowMin <= 10) {
-          console.log(`[SKIP row ${excelRowNumber}] jobNumber ${jobNumber} < min (${minJobNum})`);
+  // Make the loop async to allow await inside
+  await (async () => {
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const excelRowNumber = i + 1; // 1-based, includes header row
+      const rowRef = `${selectedSheetName}:R${excelRowNumber}`;
+      try {
+        let jobNumber = getVal(row, jobNumberIdx).replace(/\.0$/, "");
+        if (i <= 10) {
+          const rawJobNum =
+            typeof jobNumberIdx === "number" && jobNumberIdx >= 0
+              ? row[jobNumberIdx]
+              : undefined;
+          console.log(
+            `[DEBUG] Row ${excelRowNumber} jobNumber:`,
+            jobNumber,
+            "Raw:",
+            rawJobNum,
+          );
         }
-        continue;
-      }
+        let siteName = getVal(row, siteNameIdx);
+        let client = getVal(row, clientIdx) || null;
+        let managerNameRaw = getVal(row, managerNameIdx) || null;
+        let managerId: string | null = null;
+        if (managerNameRaw) {
+          managerId = await findManagerIdByName(managerNameRaw);
+        }
+        if (!jobNumber) {
+          skipped++;
+          explainSkip(excelRowNumber, "Missing jobNumber", row);
+          continue;
+        }
+        if (!siteName) {
+          skipped++;
+          explainSkip(excelRowNumber, "Missing siteName", row);
+          continue;
+        }
 
-      if (!jobNumber) {
-        skipped++;
-        explainSkip(excelRowNumber, "Missing jobNumber", row);
-        continue;
-      }
-      if (!siteName) {
-        skipped++;
-        explainSkip(excelRowNumber, "Missing siteName", row);
-        continue;
-      }
+        // Only allow jobs with jobNumber >= minJobNum
+        const jobNumberInt = parseInt(jobNumber, 10);
+        if (isNaN(jobNumberInt) || jobNumberInt < minJobNum) {
+          skippedBelowMin++;
+          explainSkip(
+            excelRowNumber,
+            `Job number below min (${minJobNum})`,
+            row,
+          );
+          continue;
+        }
 
-      seenJobNumbers.add(jobNumber);
+        seenJobNumbers.add(jobNumber);
 
-      // No manager lookup for now, just store managerNameRaw
+        // Only add new jobs, skip if exists
+        const existing = await prisma.job.findUnique({
+          where: { jobNumber },
+          select: { id: true, source: true },
+        });
 
-      const existing = await prisma.job.findUnique({
-        where: { jobNumber },
-        select: { id: true, source: true },
-      });
+        if (existing) {
+          // Skip existing jobs, do not update
+          skipped++;
+          explainSkip(excelRowNumber, "Job already exists", row);
+          continue;
+        }
 
-      if (existing && existing.source === JobSource.APP && !allowOverwrite) {
-        protectedAppJobs++;
-        continue;
-      }
-
-      // Dry run logic
-      if (!existing) {
+        // Dry run logic
         if (input.dryRun) {
           wouldCreate++;
           continue;
         }
-      } else {
-        if (input.dryRun) {
-          wouldUpdate++;
-          continue;
-        }
+
+        // Real DB write: only create
+        await prisma.job.create({
+          data: {
+            jobNumber,
+            siteName,
+            client,
+            source: JobSource.EXCEL,
+            importedAt: now,
+            excelFileName: fileName,
+            excelSheetName: selectedSheetName,
+            excelRowRef: rowRef,
+            managerNameRaw,
+            managerId, // <-- link to Manager
+          },
+          select: { id: true, createdAt: true, updatedAt: true },
+        });
+        created++;
+      } catch (e: any) {
+        errors.push({
+          rowRef,
+          message: e?.message || String(e),
+        });
       }
-
-      // Real DB write
-      const result = await prisma.job.upsert({
-        where: { jobNumber },
-        create: {
-          jobNumber,
-          siteName,
-          client,
-          source: JobSource.EXCEL,
-          importedAt: now,
-          excelFileName: fileName,
-          excelSheetName: selectedSheetName,
-          excelRowRef: rowRef,
-          managerNameRaw,
-        },
-        update: {
-          siteName,
-          client,
-          importedAt: now,
-          excelFileName: fileName,
-          excelSheetName: selectedSheetName,
-          excelRowRef: rowRef,
-          managerNameRaw,
-        },
-        select: { id: true, createdAt: true, updatedAt: true },
-      });
-
-      if (!existing) created++;
-      else updated++;
-    } catch (e: any) {
-      errors.push({
-        rowRef,
-        message: e?.message || String(e),
-      });
     }
-  }
+  })();
 
   const summary: SyncSummary = {
     fileName,
@@ -451,7 +497,9 @@ export async function syncJobsFromExcel(input: SyncInput) {
   };
 
   if (skippedBelowMin > 0) {
-    console.log(`SkippedBelowMin: ${skippedBelowMin} (min job number: ${minJobNum})`);
+    console.log(
+      `SkippedBelowMin: ${skippedBelowMin} (min job number: ${minJobNum})`,
+    );
   }
   return {
     success: errors.length === 0,

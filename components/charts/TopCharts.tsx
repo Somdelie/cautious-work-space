@@ -1,6 +1,6 @@
 "use client";
-import { CreateManagerDialog } from "@/components/dialogs/create-manager";
-import { CreateSupplierDialog } from "@/components/dialogs/create-supplier";
+
+import * as React from "react";
 import {
   Card,
   CardContent,
@@ -12,173 +12,193 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { RadialBarChart, RadialBar } from "recharts";
+import { Badge } from "@/components/ui/badge";
 import {
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  AreaChart,
-  Area,
-  PieChart,
-  Pie,
-  Cell,
-  RadialBarChart,
-  RadialBar,
-  ComposedChart,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
-import { CreateJobDialog } from "../dialogs/create-job";
-import { CreateProductDialog } from "../dialogs/create-product";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Clock, CheckCircle2, CircleDashed } from "lucide-react";
+import Link from "next/link";
 
-const TopCharts = () => {
-  // Sample data for different charts
-  const monthlyData = [
-    { month: "Jan", sales: 4000, revenue: 2400, profit: 1200 },
-    { month: "Feb", sales: 3000, revenue: 1398, profit: 900 },
-    { month: "Mar", sales: 5000, revenue: 3800, profit: 1800 },
-    { month: "Apr", sales: 4780, revenue: 3908, profit: 2100 },
-    { month: "May", sales: 5890, revenue: 4800, profit: 2400 },
-    { month: "Jun", sales: 4390, revenue: 3800, profit: 1900 },
-    { month: "Jul", sales: 4490, revenue: 4300, profit: 2000 },
-    { month: "Aug", sales: 5290, revenue: 5000, profit: 2500 },
-    { month: "Sep", sales: 6000, revenue: 5200, profit: 2700 },
-    { month: "Oct", sales: 7000, revenue: 6000, profit: 3000 },
-    { month: "Nov", sales: 8000, revenue: 7000, profit: 3500 },
-    { month: "Dec", sales: 9000, revenue: 8000, profit: 4000 },
-  ];
-
-  const horizontalBarData = [
-    { protocol: "TCP", value: 53, fill: "var(--color-tcp)" },
-    { protocol: "UDP", value: 33, fill: "var(--color-udp)" },
-    { protocol: "Non-IP", value: 8, fill: "var(--color-nonip)" },
-    { protocol: "ICMP", value: 4, fill: "var(--color-icmp)" },
-    { protocol: "Other", value: 2, fill: "var(--color-other)" },
-  ];
-
-  // Chart configs
-  const barChartConfig = {
-    sales: { label: "Sales", color: "#1e5a8a" },
-    revenue: { label: "Revenue", color: "#2ba3c1" },
-  } satisfies ChartConfig;
-
-  const horizontalBarConfig = {
-    tcp: { label: "TCP", color: "#1e5a8a" },
-    udp: { label: "UDP", color: "#2ba3c1" },
-    nonip: { label: "Non-IP", color: "#10b981" },
-    icmp: { label: "ICMP", color: "#f97316" },
-    other: { label: "Other", color: "#8b5cf6" },
-  } satisfies ChartConfig;
-
-  const stackedChartConfig = {
-    product1: { label: "Product 1", color: "#1e5a8a" },
-    product2: { label: "Product 2", color: "#2ba3c1" },
-    product3: { label: "Product 3", color: "#10b981" },
-  } satisfies ChartConfig;
-
-  return (
-    <div className="w-full grid">
-      {/* Row 5: Horizontal Bar & Progress Bars */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Horizontal Bar Chart */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Horizontal Bar Chart</CardTitle>
-            <CardDescription>Protocol distribution</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer
-              config={horizontalBarConfig}
-              className="h-[200px] w-full"
-            >
-              <BarChart data={horizontalBarData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tickLine={false} axisLine={false} />
-                <YAxis
-                  dataKey="protocol"
-                  type="category"
-                  tickLine={false}
-                  axisLine={false}
-                  width={60}
-                />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="value" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
-
-        {/* Progress Bar Style */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Progress Bars</CardTitle>
-            <CardDescription>Network metrics overview</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">
-                  Network Availability
-                </span>
-                <span className="font-medium text-foreground">71%</span>
-              </div>
-              <div className="h-3 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#1e5a8a] rounded-full"
-                  style={{ width: "71%" }}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">
-                  Network Reliability
-                </span>
-                <span className="font-medium text-foreground">41%</span>
-              </div>
-              <div className="h-3 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#2ba3c1] rounded-full"
-                  style={{ width: "41%" }}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Network Security</span>
-                <span className="font-medium text-foreground">27%</span>
-              </div>
-              <div className="h-3 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#f97316] rounded-full"
-                  style={{ width: "27%" }}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">CPU Usage</span>
-                <span className="font-medium text-foreground">85%</span>
-              </div>
-              <div className="h-3 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#10b981] rounded-full"
-                  style={{ width: "85%" }}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
+type StatusPoint = {
+  name: "Not started" | "Ongoing" | "Finished";
+  value: number;
 };
 
-export default TopCharts;
+export type LatestJobRow = {
+  id: string;
+  jobNumber: string;
+  siteName: string;
+  supplierName?: string | null;
+  managerName?: string | null;
+  createdAt: string | Date;
+  isStarted: boolean;
+  isFinished: boolean;
+};
+
+function formatDate(d: string | Date) {
+  const x = typeof d === "string" ? new Date(d) : d;
+  if (Number.isNaN(x.getTime())) return "—";
+  return x.toLocaleDateString();
+}
+
+function statusBadge(j: LatestJobRow) {
+  if (j.isFinished) {
+    return (
+      <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 tracking-wide">
+        <CheckCircle2 className="mr-1 h-3 w-3" />
+        Finished
+      </Badge>
+    );
+  }
+  if (j.isStarted) {
+    return (
+      <Badge className="bg-sky-500/80 dark:bg-blue-500/10 text-blue-100 border border-blue-500/20 tracking-wide">
+        <Clock className="mr-1 h-3 w-3" />
+        Ongoing
+      </Badge>
+    );
+  }
+  return (
+    <Badge className="bg-slate-500/10 text-slate-400 dark:text-slate-300 border border-slate-500/20 tracking-wide">
+      <CircleDashed className="mr-1 h-3 w-3" />
+      Not started
+    </Badge>
+  );
+}
+
+export default function TopCharts({
+  latestJobs,
+  jobStatusBreakdown,
+}: {
+  latestJobs: LatestJobRow[];
+  jobStatusBreakdown: StatusPoint[];
+}) {
+  // --- Radial chart: convert your breakdown into recharts data
+  const statusData = React.useMemo(() => {
+    return jobStatusBreakdown.map((x) => ({
+      name: x.name,
+      value: x.value,
+      fill:
+        x.name === "Finished"
+          ? "var(--color-finished)"
+          : x.name === "Ongoing"
+            ? "var(--color-ongoing)"
+            : "var(--color-notstarted)",
+    }));
+  }, [jobStatusBreakdown]);
+
+  const radialChartConfig = {
+    finished: { label: "Finished", color: "#10b981" },
+    ongoing: { label: "Ongoing", color: "#3b82f6" },
+    notstarted: { label: "Not started", color: "#94a3b8" },
+  } satisfies ChartConfig;
+
+  // Map CSS vars used by statusData.fill above
+  const configWithVars = {
+    ...radialChartConfig,
+    // these keys aren't used directly by recharts, but ChartContainer will set CSS vars
+    notstarted: radialChartConfig.notstarted,
+    ongoing: radialChartConfig.ongoing,
+    finished: radialChartConfig.finished,
+  } satisfies ChartConfig;
+
+  const top5 = (latestJobs ?? []).slice(0, 5);
+
+  return (
+    <div className="w-full">
+      {/* Latest 5 Jobs - Table */}
+      <Card className="bg-purple-900/70 border-purple-800 border-2">
+        <CardHeader className="py-0 flex flex-row items-center justify-between">
+          <CardTitle className="text-lg text-muted-foreground">
+            Latest jobs
+          </CardTitle>
+          <CardDescription>Most recent 5 jobs created</CardDescription>
+
+          <Link
+            href="/jobs"
+            className="bg-green-700 px-2 py-1 rounded hover:opacity-90 text-gray-300"
+          >
+            View all jobs &rarr;
+          </Link>
+        </CardHeader>
+
+        <CardContent className="pt-0">
+          <div className=" border dark:border-slate-800 overflow-hidden">
+            <Table>
+              <TableHeader className="bg-slate-950/50">
+                <TableRow className="border-slate-800">
+                  <TableHead className="text-slate-300">Job #</TableHead>
+                  <TableHead className="text-slate-300">Site</TableHead>
+                  <TableHead className="text-slate-300 hidden md:table-cell">
+                    Supplier
+                  </TableHead>
+                  <TableHead className="text-slate-300 hidden lg:table-cell">
+                    Supervisor
+                  </TableHead>
+                  <TableHead className="text-slate-300">Status</TableHead>
+                  <TableHead className="text-slate-300 text-right">
+                    Created
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+
+              <TableBody>
+                {top5.length === 0 ? (
+                  <TableRow className="border-slate-800">
+                    <TableCell
+                      colSpan={6}
+                      className="py-10 text-center text-slate-400"
+                    >
+                      No jobs yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  top5.map((j) => (
+                    <TableRow
+                      key={j.id}
+                      className="border-slate-800 hover:bg-slate-950/40"
+                    >
+                      <TableCell className=" font-medium text-primary tracking-widest">
+                        {j.jobNumber}
+                      </TableCell>
+                      <TableCell className="max-w-[260px] truncate text-muted-foreground text-xs">
+                        {j.siteName}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <Badge
+                          variant="secondary"
+                          className={`${
+                            j.supplierName
+                              ? "bg-orange-600/10 text-orange-400 border border-orange-600/20"
+                              : "opacity-60"
+                          } text-xs tracking-wide`}
+                        >
+                          {j.supplierName ?? "Missing"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell text-slate-300">
+                        {j.managerName ?? "—"}
+                      </TableCell>
+                      <TableCell>{statusBadge(j)}</TableCell>
+                      <TableCell className="text-right text-slate-400">
+                        {formatDate(j.createdAt)}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

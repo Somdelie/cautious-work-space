@@ -226,9 +226,14 @@ export function CreateOrderDialog({ onCreated }: { onCreated?: () => void }) {
               variantId: v.id,
               productId: v.productId,
               supplierId: v.supplierId,
-              label: `${v.productName} • ${v.supplierName}`,
+              label: `${v.productName}  ¹ ${v.supplierName}`,
               unit: `${v.size}${v.unit}`,
-              price: v.price,
+              price:
+                typeof v.price === "object" &&
+                v.price !== null &&
+                typeof (v.price as any).toNumber === "function"
+                  ? (v.price as any).toNumber()
+                  : v.price,
             }
           : x,
       ),

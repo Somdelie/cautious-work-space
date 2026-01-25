@@ -1,51 +1,53 @@
-import { getAllJobs, getFinishedJobs } from "@/actions/job";
-import { getSuppliers } from "@/actions/supplier";
-import { CreateJobDialog } from "@/components/dialogs/create-job";
-import { CreateManagerDialog } from "@/components/dialogs/create-manager";
-import { CreateSupplierDialog } from "@/components/dialogs/create-supplier";
+// app/(dashboard)/dashboard/page.tsx  (or wherever your DashboardPage lives)
+
 import { DownloadUserGuide } from "@/components/common/download-user-guide";
 import {
   Briefcase,
-  Users,
-  Package,
   Building2,
+  Package,
   TrendingUp,
-  Clock,
   CheckCircle,
 } from "lucide-react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { redirect } from "next/navigation";
-import { getProductsCount } from "@/actions/product";
-import Charts from "@/components/charts/Charts";
-import TopCharts from "@/components/charts/TopCharts";
+
 import BottomCharts from "@/components/charts/BottomCharts";
+import TopCharts from "@/components/charts/TopCharts";
+import { getDashboardAnalytics } from "@/actions/analytics";
+
+// ✅ client stat card with mini donut chart
+import { StatCard } from "@/components/dashboard/StatCard";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   if (!session) redirect("/sign-in");
 
-  const [jobsResult, suppliersResult, productsCountResult, finishedJobsResult] =
-    await Promise.all([
-      getAllJobs(),
-      getSuppliers(),
-      getProductsCount(),
-      getFinishedJobs(),
-    ]);
+  const analyticsRes = await getDashboardAnalytics({ months: 12 });
+  const analytics = analyticsRes.success ? analyticsRes.data : null;
 
-  const totalJobs =
-    jobsResult.success && jobsResult.data ? jobsResult.data.length : 0;
-  const suppliersCount =
-    suppliersResult.success && suppliersResult.data
-      ? suppliersResult.data.length
+  const totalJobs = analytics?.totals.totalJobs ?? 0;
+  const suppliersCount = analytics?.totals.suppliers ?? 0;
+  const productsCount = analytics?.totals.products ?? 0;
+  const finishedJobsCount = analytics?.totals.finishedJobs ?? 0;
+
+  // derive % for mini charts from jobStatusBreakdown
+  const breakdown = analytics?.jobStatusBreakdown ?? [];
+  const getVal = (name: "Not started" | "Ongoing" | "Finished") =>
+    breakdown.find((x) => x.name === name)?.value ?? 0;
+
+  const notStarted = getVal("Not started");
+  const ongoing = getVal("Ongoing");
+  const finished = getVal("Finished");
+  const totalFromBreakdown = notStarted + ongoing + finished;
+
+  const startedRate =
+    totalFromBreakdown > 0
+      ? ((ongoing + finished) / totalFromBreakdown) * 100
       : 0;
-  const productsCount = productsCountResult.success
-    ? productsCountResult.count
-    : 0;
-  const finishedJobsCount =
-    finishedJobsResult.success && finishedJobsResult.data
-      ? finishedJobsResult.data.length
-      : 0;
+
+  const finishedRate =
+    totalFromBreakdown > 0 ? (finished / totalFromBreakdown) * 100 : 0;
 
   return (
     <div className="grid gap-4 py-2">
@@ -59,7 +61,14 @@ export default async function DashboardPage() {
           iconBg="bg-blue-500/10"
           bgColor="bg-green-900/90"
           borderColor="border-green-800"
+          percent={startedRate}
+          statusText={`${Math.round(startedRate)}%`}
+          subLines={[
+            { dotClassName: "bg-amber-400", text: `${notStarted} not started` },
+            { dotClassName: "bg-blue-400", text: `${ongoing} ongoing` },
+          ]}
         />
+
         <StatCard
           label="Suppliers"
           value={suppliersCount}
@@ -68,7 +77,15 @@ export default async function DashboardPage() {
           iconBg="bg-purple-500/10"
           bgColor="bg-purple-900/90"
           borderColor="border-purple-800"
+          // until you add real “coverage” metrics, keep this neutral
+          percent={100}
+          statusText="—"
+          subLines={[
+            { dotClassName: "bg-purple-400", text: "Suppliers in catalog" },
+            { dotClassName: "bg-slate-500", text: "Used on jobs/orders" },
+          ]}
         />
+
         <StatCard
           label="Finished Jobs"
           value={finishedJobsCount}
@@ -77,7 +94,17 @@ export default async function DashboardPage() {
           iconBg="bg-emerald-500/10"
           bgColor="bg-emerald-900/90"
           borderColor="border-emerald-800"
+          percent={finishedRate}
+          statusText={`${Math.round(finishedRate)}%`}
+          subLines={[
+            { dotClassName: "bg-emerald-400", text: `${finished} finished` },
+            {
+              dotClassName: "bg-slate-500",
+              text: `${Math.max(0, totalFromBreakdown - finished)} remaining`,
+            },
+          ]}
         />
+
         <StatCard
           label="Products"
           value={productsCount}
@@ -86,15 +113,29 @@ export default async function DashboardPage() {
           iconBg="bg-orange-500/10"
           bgColor="bg-orange-900/90"
           borderColor="border-orange-800"
+          percent={100}
+          statusText="—"
+          subLines={[
+            { dotClassName: "bg-orange-400", text: "Products in catalog" },
+            { dotClassName: "bg-slate-500", text: "Variants/prices managed" },
+          ]}
         />
       </div>
 
-      {/* charts */}
-      <BottomCharts />
-      <TopCharts />
+      {/* charts (REAL DATA) */}
+      <BottomCharts
+        jobsByMonth={analytics?.jobsByMonth ?? []}
+        ordersByMonth={analytics?.ordersByMonth ?? []}
+        jobStatusBreakdown={analytics?.jobStatusBreakdown ?? []}
+      />
+
+      <TopCharts
+        latestJobs={analytics?.latestJobs ?? []}
+        jobStatusBreakdown={analytics?.jobStatusBreakdown ?? []}
+      />
 
       {/* User Guide */}
-      <div className=" bg-linear-to-r from-blue-900/20 to-purple-900/20 border border-blue-800/30 rounded p-6">
+      <div className="bg-linear-to-r from-blue-900/20 to-purple-900/20 border border-blue-800/30 rounded p-6">
         <div className="flex items-center justify-between gap-6">
           <div>
             <h3 className="text-lg font-semibold text-slate-100 mb-1">
@@ -111,42 +152,10 @@ export default async function DashboardPage() {
   );
 }
 
-function StatCard({
-  label,
-  value,
-  hint,
-  icon,
-  iconBg,
-  bgColor,
-  borderColor,
-}: {
-  label: string;
-  value: number;
-  hint: string;
-  icon: React.ReactNode;
-  iconBg: string;
-  bgColor?: string;
-  borderColor?: string;
-}) {
-  return (
-    <div
-      className={`p-4 border ${borderColor ? borderColor : "border-slate-800"} ${bgColor ? bgColor : "bg-slate-900/90"}`}
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-slate-400 text-xs font-medium mb-1">{label}</p>
-          <p className="text-2xl font-bold text-slate-100">{value}</p>
-        </div>
-        <div
-          className={`h-10 w-10 ${iconBg} rounded flex items-center justify-center`}
-        >
-          {icon}
-        </div>
-      </div>
-      <div className="flex items-center gap-1 mt-3">
-        <TrendingUp className="h-3 w-3 text-emerald-500" />
-        <span className="text-xs text-slate-400">{hint}</span>
-      </div>
-    </div>
-  );
-}
+/**
+ * If you want to keep a local StatCard fallback here, delete it —
+ * you're now importing StatCard from:
+ *   "@/components/dashboard/StatCard"
+ *
+ * That client component renders the mini donut chart.
+ */

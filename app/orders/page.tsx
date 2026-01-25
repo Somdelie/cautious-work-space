@@ -6,31 +6,45 @@ import {
   type UIOrder,
 } from "@/components/orders/orders-data-table";
 
+function decToNumber(v: any) {
+  if (v === null || v === undefined) return 0;
+  // Prisma Decimal has toString()
+  if (typeof v === "object" && typeof v.toString === "function") {
+    const n = Number(v.toString());
+    return Number.isFinite(n) ? n : 0;
+  }
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export default async function OrdersPage() {
   const ordersRes = await getAllOrders();
   const jobsRes = await getAllJobs();
 
-  // ✅ jobs must NEVER be undefined
   const jobs =
     jobsRes.success && jobsRes.data
-      ? jobsRes.data.map((j) => ({
+      ? jobsRes.data.map((j: any) => ({
           id: j.id,
           jobNumber: j.jobNumber,
           siteName: j.siteName,
         }))
       : [];
 
-  // ✅ Map Prisma -> UIOrder (supplier required)
   const orders: UIOrder[] =
     ordersRes.success && ordersRes.data
-      ? ordersRes.data.map((o) => {
-          // pick supplier from job.supplier first, fallback to first item.supplier
+      ? ordersRes.data.map((o: any) => {
           const supplier = o.job?.supplier ?? o.items?.[0]?.supplier ?? null;
 
           return {
             id: o.id,
             orderNumber: o.orderNumber,
-            createdAt: o.createdAt,
+
+            // ✅ send string (plain)
+            createdAt:
+              o.createdAt instanceof Date
+                ? o.createdAt.toISOString()
+                : String(o.createdAt),
+
             status: undefined,
 
             job: o.job
@@ -45,11 +59,15 @@ export default async function OrdersPage() {
               ? { id: supplier.id, name: supplier.name }
               : null,
 
-            items: o.items.map((it) => ({
+            // ✅ convert Decimal quantity to number
+            items: (o.items ?? []).map((it: any) => ({
               id: it.id,
-              quantity: it.quantity,
+              quantity: decToNumber(it.quantity),
               unit: it.variant ? `${it.variant.size}${it.variant.unit}` : "—",
             })),
+
+            // OPTIONAL: if your UI ever wants subtotal, pass it as number too
+            // subtotal: decToNumber(o.subtotal),
           };
         })
       : [];

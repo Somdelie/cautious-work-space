@@ -24,6 +24,7 @@ type GetAllJobsResult = {
   error: unknown | null;
 };
 
+// get all jobs with relations
 export async function getAllJobs(): Promise<GetAllJobsResult> {
   try {
     const jobs = await prisma.job.findMany({
@@ -43,12 +44,54 @@ export async function getAllJobs(): Promise<GetAllJobsResult> {
           },
           orderBy: { createdAt: "desc" },
         },
+        jobCostSummaries: true,
       },
       orderBy: { createdAt: "desc" },
     });
 
+    // Serialize Decimal fields in jobCostSummaries
+    function serializeJob(job: any) {
+      return {
+        ...job,
+        jobCostSummaries: (job.jobCostSummaries || []).map((s: any) => ({
+          ...s,
+          materialsActual:
+            typeof s.materialsActual === "object" &&
+            s.materialsActual !== null &&
+            typeof s.materialsActual.toNumber === "function"
+              ? s.materialsActual.toNumber()
+              : s.materialsActual,
+          materialsEstimate:
+            typeof s.materialsEstimate === "object" &&
+            s.materialsEstimate !== null &&
+            typeof s.materialsEstimate.toNumber === "function"
+              ? s.materialsEstimate.toNumber()
+              : s.materialsEstimate,
+          laborActual:
+            typeof s.laborActual === "object" &&
+            s.laborActual !== null &&
+            typeof s.laborActual.toNumber === "function"
+              ? s.laborActual.toNumber()
+              : s.laborActual,
+          totalActual:
+            typeof s.totalActual === "object" &&
+            s.totalActual !== null &&
+            typeof s.totalActual.toNumber === "function"
+              ? s.totalActual.toNumber()
+              : s.totalActual,
+          totalEstimate:
+            typeof s.totalEstimate === "object" &&
+            s.totalEstimate !== null &&
+            typeof s.totalEstimate.toNumber === "function"
+              ? s.totalEstimate.toNumber()
+              : s.totalEstimate,
+        })),
+      };
+    }
+    const safeJobs = jobs.map(serializeJob);
+
     // Sort jobs: ongoing jobs first (isStarted=true, isFinished=false), then others
-    const sortedJobs = [...jobs].sort(
+    const sortedJobs = [...safeJobs].sort(
       (a: JobWithRelations, b: JobWithRelations) => {
         // Ongoing jobs (started but not finished) come first
         const aIsOngoing = a.isStarted && !a.isFinished;
@@ -76,6 +119,7 @@ export async function getAllJobs(): Promise<GetAllJobsResult> {
   }
 }
 
+// get finished jobs
 export async function getFinishedJobs() {
   try {
     const jobs = await prisma.job.findMany({
@@ -111,6 +155,7 @@ export async function getJobsByManagerId(managerId: string) {
   }
 }
 
+// create new job
 export async function createJob(data: {
   jobNumber: string;
   siteName: string;
@@ -141,6 +186,7 @@ export async function createJob(data: {
   return { success: true, data: job };
 }
 
+// get job by id
 export async function getJobById(id: string) {
   try {
     const job = await prisma.job.findUnique({
@@ -175,6 +221,7 @@ export async function getJobById(id: string) {
   }
 }
 
+// update job by id
 export async function updateJob(
   id: string,
   data: {
@@ -186,7 +233,14 @@ export async function updateJob(
     specPdfUrl?: string | null;
     boqPdfUrl?: string | null;
 
-    // ✅ NEW
+    // ✅ flags
+    specNotRequired?: boolean;
+    boqNotRequired?: boolean;
+    safetyFileNotRequired?: boolean;
+
+    // ✅ received boolean
+    safetyFile?: boolean;
+
     isStarted?: boolean;
     isFinished?: boolean;
   },
@@ -200,14 +254,27 @@ export async function updateJob(
       supplierId: data.supplierId ?? undefined,
       specPdfUrl: data.specPdfUrl ?? undefined,
       boqPdfUrl: data.boqPdfUrl ?? undefined,
+
+      ...(typeof data.specNotRequired === "boolean" && {
+        specNotRequired: data.specNotRequired,
+      }),
+      ...(typeof data.boqNotRequired === "boolean" && {
+        boqNotRequired: data.boqNotRequired,
+      }),
+      ...(typeof data.safetyFileNotRequired === "boolean" && {
+        safetyFileNotRequired: data.safetyFileNotRequired,
+      }),
+
+      ...(typeof data.safetyFile === "boolean" && {
+        safetyFile: data.safetyFile,
+      }),
     };
 
-    // ✅ status logic (keep timestamps consistent)
+    // status logic (keep yours)
     if (typeof data.isStarted === "boolean") {
       updateData.isStarted = data.isStarted;
       updateData.startedAt = data.isStarted ? new Date() : null;
 
-      // if you unstart a job, also unfinish it
       if (!data.isStarted) {
         updateData.isFinished = false;
         updateData.finishedAt = null;
@@ -216,9 +283,7 @@ export async function updateJob(
 
     if (typeof data.isFinished === "boolean") {
       updateData.isFinished = data.isFinished;
-
       if (data.isFinished) {
-        // finishing implies started
         updateData.isStarted = true;
         updateData.startedAt = updateData.startedAt ?? new Date();
         updateData.finishedAt = new Date();
@@ -245,6 +310,7 @@ export async function updateJob(
   }
 }
 
+// set products for a job
 export async function setJobProducts(
   jobId: string,
   payload: {
@@ -291,11 +357,14 @@ export async function setJobProducts(
     revalidatePath(`/jobs/${jobId}`);
     return { success: true };
   } catch (e: any) {
-    return { success: false, error: e?.message ?? "Failed to update job products" };
+    return {
+      success: false,
+      error: e?.message ?? "Failed to update job products",
+    };
   }
 }
 
-
+// delete job by id
 export async function deleteJob(id: string) {
   try {
     await prisma.job.delete({
@@ -309,6 +378,7 @@ export async function deleteJob(id: string) {
   }
 }
 
+// mark job as started
 export async function markJobAsStarted(id: string) {
   try {
     const job = await prisma.job.update({
@@ -326,6 +396,7 @@ export async function markJobAsStarted(id: string) {
   }
 }
 
+// mark job as finished
 export async function markJobAsFinished(id: string) {
   try {
     const job = await prisma.job.update({
@@ -342,4 +413,16 @@ export async function markJobAsFinished(id: string) {
   } catch {
     return { success: false, error: "Failed to mark job as finished" };
   }
+}
+
+// get total actual and estimate costs across all jobs
+export async function getAllJobsCostTotals() {
+  const agg = await prisma.jobCostSummary.aggregate({
+    _sum: { totalActual: true, totalEstimate: true },
+  });
+  return {
+    success: true,
+    totalActual: agg._sum.totalActual ?? 0,
+    totalEstimate: agg._sum.totalEstimate ?? 0,
+  };
 }

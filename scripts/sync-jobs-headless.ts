@@ -24,12 +24,13 @@ async function main() {
 
   let jobs: any[] = [];
   try {
-    jobs = extractJobsFromExcel({ filePath });
+    const extracted = extractJobsFromExcel({ filePath });
+    jobs = Array.isArray(extracted) ? extracted : [];
   } catch (e: any) {
     console.error("Failed to extract jobs from Excel:", e?.message || e);
     process.exit(1);
   }
-  if (!jobs.length) {
+  if (!Array.isArray(jobs) || !jobs.length) {
     console.log("No jobs found to sync.");
     process.exit(0);
   }

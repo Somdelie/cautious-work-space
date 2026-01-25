@@ -105,8 +105,9 @@ export function CreateProductDialog({
     );
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Accepts a flag to keep dialog open for bulk add
+  const handleSubmit = async (e: React.FormEvent, keepOpen = false) => {
+    if (e) e.preventDefault();
 
     if (!name.trim()) {
       toast.error("Please enter a product name");
@@ -161,8 +162,13 @@ export function CreateProductDialog({
 
       toast.success("Product created");
       resetForm();
-      setOpen(false);
-      onSuccess?.();
+      if (!keepOpen) {
+        setOpen(false);
+        onSuccess?.();
+      } else {
+        // Optionally call onSuccess for live update
+        onSuccess?.();
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unexpected error");
     } finally {
@@ -195,7 +201,7 @@ export function CreateProductDialog({
         </DialogHeader>
 
         <form
-          onSubmit={handleSubmit}
+          onSubmit={(e) => handleSubmit(e, false)}
           className="space-y-4 max-h-[75vh] overflow-y-auto pr-2"
         >
           {/* Supplier */}
@@ -367,6 +373,16 @@ export function CreateProductDialog({
               disabled={loading}
             >
               Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={loading}
+              className="gap-2"
+              onClick={(e) => handleSubmit(e as any, true)}
+            >
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              Create & Add Another
             </Button>
             <Button type="submit" disabled={loading} className="gap-2">
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}

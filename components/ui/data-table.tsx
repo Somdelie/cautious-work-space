@@ -139,83 +139,6 @@ export function DataTable<T>({
 
   return (
     <div className={`w-full ${className}`}>
-      {/* Optional built-in column dropdown */}
-      {showColumnToggle && (
-        <div className="flex items-center justify-end gap-2">
-          <div className="relative">
-            <button
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="inline-flex items-center justify-center gap-1 sm:gap-2 rounded border border-slate-700 bg-transparent px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-slate-100 hover:bg-slate-800 transition-colors"
-              type="button"
-            >
-              <Columns3 className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Columns</span>
-              <ChevronDown className="h-3 w-3 sm:h-4 sm:w-4" />
-            </button>
-
-            {dropdownOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setDropdownOpen(false)}
-                />
-                <div className="absolute right-0 top-full mt-2 w-48 sm:w-56 z-50 rounded border border-slate-700 bg-slate-900 shadow-lg">
-                  <div className="p-2">
-                    <div className="px-2 py-1.5 text-xs sm:text-sm text-slate-100">
-                      Show / Hide columns
-                    </div>
-                    <div className="my-1 h-px bg-slate-700" />
-
-                    <div className="max-h-[60vh] overflow-y-auto">
-                      {hideableColumns.map((col) => {
-                        const isLocked = lockColumns.includes(col.id);
-                        return (
-                          <label
-                            key={col.id}
-                            className={`flex items-center gap-2 px-2 py-1.5 text-xs sm:text-sm rounded hover:bg-slate-800 cursor-pointer ${
-                              isLocked ? "opacity-50 cursor-not-allowed" : ""
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={col.getIsVisible()}
-                              disabled={isLocked}
-                              onChange={(e) => {
-                                if (!isLocked)
-                                  col.toggleVisibility(e.target.checked);
-                              }}
-                              className="h-4 w-4 rounded border-slate-600 bg-slate-800 text-sky-600"
-                            />
-                            <span className="truncate capitalize text-slate-200">
-                              {getColumnLabel(col)}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-
-                    <div className="my-1 h-px bg-slate-700" />
-
-                    <button
-                      disabled={!canReset}
-                      onClick={() => {
-                        if (typeof window === "undefined") return;
-                        window.localStorage.removeItem(storageKey);
-                        table.setColumnVisibility({});
-                      }}
-                      className="w-full px-2 py-1.5 text-xs sm:text-sm text-left text-slate-200 hover:bg-slate-800 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                      type="button"
-                    >
-                      Reset to default
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Mobile Card View (< 768px) */}
       <div className="md:hidden space-y-3">
         {table.getRowModel().rows?.length ? (
@@ -292,19 +215,19 @@ export function DataTable<T>({
               ))}
             </thead>
 
-            <tbody className="dark:bg-slate-800/80 bg-card/80">
+            <tbody className="dark:bg-slate-800/80 bg-card/90 text-muted-foreground">
               {table.getRowModel().rows?.length ? (
                 table.getRowModel().rows.map((row) => (
                   <tr
                     key={row.id}
-                    className="hover:bg-white/5 border-b dark:border-gray-700 transition-colors"
+                    className="hover:bg-white/5 border-b dark:border-gray-700 transition-colors "
                   >
                     {row.getVisibleCells().map((cell) => (
                       <td
                         key={cell.id}
-                        className="px-3 lg:px-4 py-1 align-middle border-r dark:border-gray-700 last:border-r-0 text-xs lg:text-sm text-slate-200"
+                        className="px-3 lg:px-4 py-1 align-middle border-r dark:border-gray-700 last:border-r-0 text-xs lg:text-sm"
                       >
-                        <div className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                        <div className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground">
                           {flexRender(
                             cell.column.columnDef.cell,
                             cell.getContext(),

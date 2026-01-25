@@ -27,8 +27,28 @@ export async function getProducts() {
       },
       orderBy: { name: "asc" },
     });
-    // console.log(products);
-    return { success: true, data: products };
+
+    // Recursively convert Decimal.js objects to numbers in variants
+    function serializeProduct(product: any) {
+      return {
+        ...product,
+        supplierProducts: (product.supplierProducts || []).map((sp: any) => ({
+          ...sp,
+          variants: (sp.variants || []).map((v: any) => ({
+            ...v,
+            price:
+              typeof v.price === "object" &&
+              v.price !== null &&
+              typeof v.price.toNumber === "function"
+                ? v.price.toNumber()
+                : v.price,
+          })),
+        })),
+        spreadRates: product.spreadRates || [],
+      };
+    }
+    const safeProducts = products.map(serializeProduct);
+    return { success: true, data: safeProducts };
   } catch (error) {
     return { success: false, error, data: [] as const };
   }

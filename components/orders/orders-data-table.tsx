@@ -33,8 +33,8 @@ export type UIOrder = {
   orderNumber: string;
   job: { id: string; jobNumber: string; siteName: string } | null;
   supplier: { id: string; name: string } | null; // UI needs this
-  createdAt: string | Date;
   status?: string;
+  createdAt: string;
   items: Array<{ id: string; quantity: number; unit: string }>;
 };
 

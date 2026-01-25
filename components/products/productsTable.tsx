@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { CreateProductDialog } from "../dialogs/create-product";
+import { EditProductDialog } from "../dialogs/edit-product";
 import { ChevronDown, Columns3 } from "lucide-react";
 
 type UsageType = "INTERNAL" | "EXTERNAL" | "BOTH";
@@ -67,10 +68,10 @@ function usageBadgeText(t: UsageType) {
 
 function usageBadgeStyle(t: UsageType) {
   if (t === "BOTH")
-    return "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800";
+    return "bg-purple-200 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-400 dark:border-purple-800";
   if (t === "INTERNAL")
-    return "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800";
-  return "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800";
+    return "bg-blue-200 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-400 dark:border-blue-800";
+  return "bg-amber-200 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-400 dark:border-amber-800";
 }
 
 function keyToString(k: VariantKey) {
@@ -206,12 +207,12 @@ export default function ProductsTable({
       {
         accessorKey: "shortcut",
         header: () => (
-          <span className="text-xs font-semibold uppercase tracking-wider ">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             Shortcut
           </span>
         ),
         cell: ({ row }) => (
-          <span className="font-mono text-sm font-medium text-slate-100">
+          <span className="font-mono text-sm font-medium">
             {row.original.shortcut || "missing"}
           </span>
         ),
@@ -225,7 +226,7 @@ export default function ProductsTable({
         ),
         cell: ({ row }) => (
           <span
-            className="block max-w-[360px] truncate text-slate-100"
+            className="block max-w-[360px] truncate font-medium text-muted-foreground text-xs"
             title={row.original.name}
           >
             {row.original.name}
@@ -282,7 +283,10 @@ export default function ProductsTable({
         <div className="flex gap-2">
           <button
             className="px-2 py-1 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-800"
-            onClick={() => alert(`Edit ${row.original.name}`)}
+            onClick={() => {
+              setEditProductId(row.original.id);
+              setEditDialogOpen(true);
+            }}
             type="button"
           >
             Edit
@@ -306,130 +310,121 @@ export default function ProductsTable({
   const canReset =
     typeof window !== "undefined" && !!window.localStorage.getItem(storageKey);
 
+  const [editProductId, setEditProductId] = useState<string | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+
   return (
     <div className="space-y-4">
       {/* Header Controls */}
-      <div className="">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          {/* Left controls */}
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-            <div className="w-[260px]">
-              <Select value={supplierId} onValueChange={setSupplierId}>
-                <SelectTrigger className="text-muted-foreground">
-                  <SelectValue placeholder="Select supplier..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {suppliers?.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* Left controls */}
+        <div className="flex-1">
+          <Select value={supplierId} onValueChange={setSupplierId}>
+            <SelectTrigger className="text-muted-foreground">
+              <SelectValue placeholder="Select supplier..." />
+            </SelectTrigger>
+            <SelectContent>
+              {suppliers?.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-            {/* <span className="hidden md:block text-xs text-slate-400">
-              Showing prices for selected supplier
-            </span> */}
+        {/* Right controls */}
+
+        <div className="flex-1">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search products..."
+            className=""
+          />
+        </div>
+
+        {/* right side */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="relative">
+            <button
+              onClick={() => setColumnsDropdownOpen(!columnsDropdownOpen)}
+              className="inline-flex items-center justify-center gap-1 sm:gap-2 rounded border border-slate-700 bg-transparent px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-slate-100 hover:bg-slate-800 transition-colors"
+              type="button"
+            >
+              <Columns3 className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="">Columns</span>
+              <ChevronDown className="h-3 w-3 sm:h-4 sm:w-4" />
+            </button>
+
+            {columnsDropdownOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setColumnsDropdownOpen(false)}
+                />
+                <div className="absolute md:right-0 top-full mt-2 w-48 sm:w-56 z-50 rounded border border-slate-700 bg-slate-900 shadow-lg">
+                  <div className="p-2">
+                    <div className="px-2 py-1.5 text-xs sm:text-sm font-semibold text-slate-100">
+                      Show / Hide columns
+                    </div>
+                    <div className="my-1 h-px bg-slate-700" />
+
+                    <div className="max-h-[60vh] overflow-y-auto">
+                      {(tableRef.current?.getAllLeafColumns?.() ?? [])
+                        .filter((c: any) => c.getCanHide?.() !== false)
+                        .filter((c: any) =>
+                          columnAllowList.includes(String(c.id)),
+                        )
+                        .map((col: any) => {
+                          const isLocked = lockColumns.includes(col.id);
+                          return (
+                            <label
+                              key={col.id}
+                              className={`flex items-center gap-2 px-2 py-1.5 text-xs sm:text-sm rounded hover:bg-slate-800 cursor-pointer ${
+                                isLocked ? "opacity-50 cursor-not-allowed" : ""
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={col.getIsVisible()}
+                                disabled={isLocked}
+                                onChange={(e) => {
+                                  if (!isLocked)
+                                    col.toggleVisibility(e.target.checked);
+                                }}
+                                className="h-4 w-4 rounded border-slate-600 bg-slate-800 text-sky-600"
+                              />
+                              <span className="truncate capitalize text-slate-200">
+                                {productColumnLabel(col)}
+                              </span>
+                            </label>
+                          );
+                        })}
+                    </div>
+
+                    <div className="my-1 h-px bg-slate-700" />
+
+                    <button
+                      disabled={!canReset}
+                      onClick={() => {
+                        if (typeof window === "undefined") return;
+                        window.localStorage.removeItem(storageKey);
+                        tableRef.current?.setColumnVisibility?.({});
+                      }}
+                      className="w-full px-2 py-1.5 text-xs sm:text-sm text-left text-slate-200 hover:bg-slate-800 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                      type="button"
+                    >
+                      Reset to default
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
-          {/* Right controls */}
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
-            <div className="w-full sm:w-[320px]">
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search products..."
-                className=""
-              />
-            </div>
-
-            {/* Columns dropdown (ONLY main columns) */}
-            <div className="flex items-center justify-end gap-2">
-              <div className="relative">
-                <button
-                  onClick={() => setColumnsDropdownOpen(!columnsDropdownOpen)}
-                  className="inline-flex items-center justify-center gap-1 sm:gap-2 rounded border border-slate-700 bg-transparent px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-slate-100 hover:bg-slate-800 transition-colors"
-                  type="button"
-                >
-                  <Columns3 className="h-3 w-3 sm:h-4 sm:w-4" />
-                  <span className="hidden sm:inline">Columns</span>
-                  <ChevronDown className="h-3 w-3 sm:h-4 sm:w-4" />
-                </button>
-
-                {columnsDropdownOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => setColumnsDropdownOpen(false)}
-                    />
-                    <div className="absolute right-0 top-full mt-2 w-48 sm:w-56 z-50 rounded border border-slate-700 bg-slate-900 shadow-lg">
-                      <div className="p-2">
-                        <div className="px-2 py-1.5 text-xs sm:text-sm font-semibold text-slate-100">
-                          Show / Hide columns
-                        </div>
-                        <div className="my-1 h-px bg-slate-700" />
-
-                        <div className="max-h-[60vh] overflow-y-auto">
-                          {(tableRef.current?.getAllLeafColumns?.() ?? [])
-                            .filter((c: any) => c.getCanHide?.() !== false)
-                            .filter((c: any) =>
-                              columnAllowList.includes(String(c.id)),
-                            )
-                            .map((col: any) => {
-                              const isLocked = lockColumns.includes(col.id);
-                              return (
-                                <label
-                                  key={col.id}
-                                  className={`flex items-center gap-2 px-2 py-1.5 text-xs sm:text-sm rounded hover:bg-slate-800 cursor-pointer ${
-                                    isLocked
-                                      ? "opacity-50 cursor-not-allowed"
-                                      : ""
-                                  }`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={col.getIsVisible()}
-                                    disabled={isLocked}
-                                    onChange={(e) => {
-                                      if (!isLocked)
-                                        col.toggleVisibility(e.target.checked);
-                                    }}
-                                    className="h-4 w-4 rounded border-slate-600 bg-slate-800 text-sky-600"
-                                  />
-                                  <span className="truncate capitalize text-slate-200">
-                                    {productColumnLabel(col)}
-                                  </span>
-                                </label>
-                              );
-                            })}
-                        </div>
-
-                        <div className="my-1 h-px bg-slate-700" />
-
-                        <button
-                          disabled={!canReset}
-                          onClick={() => {
-                            if (typeof window === "undefined") return;
-                            window.localStorage.removeItem(storageKey);
-                            tableRef.current?.setColumnVisibility?.({});
-                          }}
-                          className="w-full px-2 py-1.5 text-xs sm:text-sm text-left text-slate-200 hover:bg-slate-800 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                          type="button"
-                        >
-                          Reset to default
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="">
-              {" "}
-              <CreateProductDialog />
-            </div>
+          <div className="">
+            <CreateProductDialog />
           </div>
         </div>
       </div>
@@ -446,6 +441,18 @@ export default function ProductsTable({
           pageSizeOptions={[5, 10, 20, 50, 100]}
         />
       </div>
+      <EditProductDialog
+        productId={editProductId}
+        open={editDialogOpen}
+        onOpenChange={(open) => {
+          setEditDialogOpen(open);
+          if (!open) setEditProductId(null);
+        }}
+        onSuccess={() => {
+          setEditDialogOpen(false);
+          setEditProductId(null);
+        }}
+      />
     </div>
   );
 }

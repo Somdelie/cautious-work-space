@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -20,21 +20,53 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Upload, FileText, X, Info, Pencil } from "lucide-react";
+import {
+  Command,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Loader2,
+  Upload,
+  FileText,
+  X,
+  Info,
+  Check,
+  ChevronsUpDown,
+  Trash2,
+  Search,
+  Package,
+} from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 import { getManagers } from "@/actions/manager";
 import { getSuppliers } from "@/actions/supplier";
 import { getJobById, updateJob } from "@/actions/job";
 import { getProducts } from "@/actions/product";
 import { bulkUpdateJobProducts } from "@/actions/job-product";
+import {
+  searchVariantsAction,
+  VariantSearchRow,
+} from "@/actions/variant-search";
+import { formatCurrency } from "@/lib/formatCurrency";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface EditJobDialogProps {
-  jobId: string | null; // pass selectedJobId
+  jobId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
-  trigger?: React.ReactNode; // optional if you want to use DialogTrigger
+  trigger?: React.ReactNode;
 }
 
 interface Manager {
@@ -56,16 +88,34 @@ type JobProductDraft = {
   unit: string | null;
 };
 
+type ProductLite = {
+  id: string;
+  name: string;
+  usageType?: "INTERNAL" | "EXTERNAL" | "BOTH";
+};
+
 type JobDTO = {
   id: string;
   jobNumber: string;
   siteName: string;
   client: string | null;
+
   managerId: string | null;
   managerNameRaw: string | null;
+
   supplierId: string | null;
+
   specPdfUrl: string | null;
   boqPdfUrl: string | null;
+
+  specNotRequired: boolean;
+  boqNotRequired: boolean;
+  safetyFileNotRequired: boolean;
+
+  safetyFile: boolean; // ✅ boolean received
+
+  specsReceived: boolean; // if you use it in table/UI
+
   jobProducts?: Array<{
     id: string;
     productId: string;
@@ -75,6 +125,10 @@ type JobDTO = {
     product: { id: string; name: string };
   }>;
 };
+
+function checkedToBool(v: boolean | "indeterminate") {
+  return v === true;
+}
 
 export function EditJobDialog({
   jobId,
@@ -97,9 +151,17 @@ export function EditJobDialog({
   const [managerNameRaw, setManagerNameRaw] = useState<string>("");
 
   const [supplierId, setSupplierId] = useState<string>("");
+  const [supplierOpen, setSupplierOpen] = useState(false);
 
   const [specPdfUrl, setSpecPdfUrl] = useState<string | null>(null);
   const [boqPdfUrl, setBoqPdfUrl] = useState<string | null>(null);
+
+  const [specNotRequired, setSpecNotRequired] = useState(false);
+  const [boqNotRequired, setBoqNotRequired] = useState(false);
+  const [safetyFileNotRequired, setSafetyFileNotRequired] = useState(false);
+
+  // ✅ safety received boolean
+  const [safetyFileReceived, setSafetyFileReceived] = useState(false);
 
   const [specFileName, setSpecFileName] = useState<string | null>(null);
   const [boqFileName, setBoqFileName] = useState<string | null>(null);
@@ -107,28 +169,30 @@ export function EditJobDialog({
   const [specUploading, setSpecUploading] = useState(false);
   const [boqUploading, setBoqUploading] = useState(false);
 
-  // Job Products state
   const [jobProducts, setJobProducts] = useState<JobProductDraft[]>([]);
-  const [allProducts, setAllProducts] = useState<
-    { id: string; name: string }[]
-  >([]);
-  const [addProductId, setAddProductId] = useState<string>("");
+  const [allProducts, setAllProducts] = useState<ProductLite[]>([]);
+
+  // Variant picker
+  const [variantPickerOpen, setVariantPickerOpen] = useState(false);
+  const [variantQuery, setVariantQuery] = useState("");
+  const [variantResults, setVariantResults] = useState<VariantSearchRow[]>([]);
+  const [variantLoading, setVariantLoading] = useState(false);
+  const [variantCursor, setVariantCursor] = useState<string | null>(null);
 
   const selectedManager = useMemo(
     () => managers.find((m) => m.id === managerId) ?? null,
     [managers, managerId],
   );
 
-  // keep raw name synced when selecting manager
   useEffect(() => {
     if (selectedManager) setManagerNameRaw(selectedManager.name);
   }, [selectedManager]);
 
-  // fetch managers/suppliers/products on open
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    const fetchLists = async () => {
+
+    (async () => {
       try {
         const [mRes, sRes, pRes] = await Promise.all([
           getManagers(),
@@ -136,27 +200,32 @@ export function EditJobDialog({
           getProducts(),
         ]);
         if (cancelled) return;
+
         if (mRes.success && mRes.data) setManagers(mRes.data);
         if (sRes.success && sRes.data) setSuppliers(sRes.data);
+
         if (pRes.success && pRes.data) {
           setAllProducts(
-            pRes.data.map((p: any) => ({ id: p.id, name: p.name })),
+            pRes.data.map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              usageType: p.usageType,
+            })),
           );
         }
       } catch {
-        // not fatal
+        // ignore
       }
-    };
-    fetchLists();
+    })();
+
     return () => {
       cancelled = true;
     };
   }, [open]);
 
-  // fetch job details when dialog opens (and jobId changes)
   useEffect(() => {
     if (!open) return;
-    // clear state if no jobId
+
     if (!jobId) {
       setJobNumber("");
       setSiteName("");
@@ -164,34 +233,57 @@ export function EditJobDialog({
       setManagerId("");
       setManagerNameRaw("");
       setSupplierId("");
+
       setSpecPdfUrl(null);
       setBoqPdfUrl(null);
+
+      setSpecNotRequired(false);
+      setBoqNotRequired(false);
+      setSafetyFileNotRequired(false);
+
+      setSafetyFileReceived(false);
+
       setSpecFileName(null);
       setBoqFileName(null);
+
       setJobProducts([]);
       return;
     }
+
     let cancelled = false;
-    const fetchJob = async () => {
+
+    (async () => {
       setInitialLoading(true);
       try {
         const res = await getJobById(jobId);
         if (cancelled) return;
+
         if (!res?.success || !res?.data) {
           toast.error((res as any)?.error || "Failed to load job");
           return;
         }
+
         const j = res.data as JobDTO;
+
         setJobNumber(j.jobNumber ?? "");
         setSiteName(j.siteName ?? "");
         setClient(j.client ?? "");
         setManagerId(j.managerId ?? "");
         setManagerNameRaw(j.managerNameRaw ?? "");
         setSupplierId(j.supplierId ?? "");
+
         setSpecPdfUrl(j.specPdfUrl ?? null);
         setBoqPdfUrl(j.boqPdfUrl ?? null);
+
+        setSpecNotRequired(Boolean(j.specNotRequired));
+        setBoqNotRequired(Boolean(j.boqNotRequired));
+        setSafetyFileNotRequired(Boolean(j.safetyFileNotRequired));
+
+        setSafetyFileReceived(Boolean(j.safetyFile));
+
         setSpecFileName(null);
         setBoqFileName(null);
+
         setJobProducts(
           Array.isArray(j.jobProducts)
             ? j.jobProducts.map((jp) => ({
@@ -209,21 +301,93 @@ export function EditJobDialog({
       } finally {
         if (!cancelled) setInitialLoading(false);
       }
-    };
-    fetchJob();
+    })();
+
     return () => {
       cancelled = true;
     };
   }, [open, jobId]);
 
-  // reset uploads flags on close
+  // hide uploads if not required + clear urls
   useEffect(() => {
-    if (open) return;
-    setLoading(false);
-    setInitialLoading(false);
-    setSpecUploading(false);
-    setBoqUploading(false);
-  }, [open]);
+    if (!open) return;
+    if (specNotRequired) {
+      setSpecPdfUrl(null);
+      setSpecFileName(null);
+      setSpecUploading(false);
+    }
+  }, [specNotRequired, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (boqNotRequired) {
+      setBoqPdfUrl(null);
+      setBoqFileName(null);
+      setBoqUploading(false);
+    }
+  }, [boqNotRequired, open]);
+
+  // ✅ if safety file becomes "not required", force received=false
+  useEffect(() => {
+    if (!open) return;
+    if (safetyFileNotRequired) {
+      setSafetyFileReceived(false);
+    }
+  }, [safetyFileNotRequired, open]);
+
+  // Search variants when query changes
+  useEffect(() => {
+    const q = variantQuery.trim();
+    if (!variantPickerOpen || q.length < 2) {
+      setVariantResults([]);
+      setVariantCursor(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = setTimeout(async () => {
+      setVariantLoading(true);
+      try {
+        const res = await searchVariantsAction({ q, take: 20 });
+        if (cancelled) return;
+        if (res.success) {
+          setVariantResults(res.data);
+          setVariantCursor(res.nextCursor);
+        }
+      } catch {
+        if (!cancelled) toast.error("Failed to search products");
+      } finally {
+        if (!cancelled) setVariantLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [variantQuery, variantPickerOpen]);
+
+  const loadMoreVariants = useCallback(async () => {
+    const q = variantQuery.trim();
+    if (variantLoading || !variantCursor || q.length < 2) return;
+
+    setVariantLoading(true);
+    try {
+      const res = await searchVariantsAction({
+        q,
+        take: 20,
+        cursor: variantCursor,
+      });
+      if (res.success) {
+        setVariantResults((prev) => [...prev, ...res.data]);
+        setVariantCursor(res.nextCursor);
+      }
+    } catch {
+      toast.error("Failed to load more products");
+    } finally {
+      setVariantLoading(false);
+    }
+  }, [variantCursor, variantLoading, variantQuery]);
 
   const handlePdfUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -270,50 +434,51 @@ export function EditJobDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!jobId) {
-      toast.error("No job selected");
-      return;
-    }
-    if (!jobNumber.trim()) {
-      toast.error("Please enter a job number");
-      return;
-    }
-    if (!siteName.trim()) {
-      toast.error("Please enter a site name");
-      return;
-    }
-    if (!managerId && !managerNameRaw.trim()) {
-      toast.error("Select a manager or type the manager name");
-      return;
-    }
+
+    if (!jobId) return toast.error("No job selected");
+    if (!jobNumber.trim()) return toast.error("Please enter a job number");
+    if (!siteName.trim()) return toast.error("Please enter a site name");
+    if (!managerId && !managerNameRaw.trim())
+      return toast.error("Select a manager or type the manager name");
+
     setLoading(true);
     try {
-      // Save job meta
       const res = await updateJob(jobId, {
         jobNumber: jobNumber.trim(),
         siteName: siteName.trim(),
         client: client.trim() || undefined,
-        managerId: managerId || undefined,
-        supplierId: supplierId || undefined,
-        specPdfUrl: specPdfUrl ?? undefined,
-        boqPdfUrl: boqPdfUrl ?? undefined,
+        managerId: managerId || null,
+        supplierId: supplierId || null,
+
+        specPdfUrl: specNotRequired ? null : (specPdfUrl ?? null),
+        boqPdfUrl: boqNotRequired ? null : (boqPdfUrl ?? null),
+
+        specNotRequired,
+        boqNotRequired,
+        safetyFileNotRequired,
+
+        // ✅ safety received only when required
+        safetyFile: safetyFileNotRequired ? false : safetyFileReceived,
       });
+
       if (!res?.success) {
         toast.error((res as any)?.error || "Failed to update job");
         return;
       }
-      // Save job products
+
       const productsToSave = jobProducts.map((jp) => ({
         productId: jp.productId,
         required: jp.required,
         quantity: jp.quantity ?? undefined,
         unit: jp.unit ?? undefined,
       }));
+
       const prodRes = await bulkUpdateJobProducts(jobId, productsToSave);
       if (!prodRes?.success) {
         toast.error(prodRes?.error || "Failed to update job products");
         return;
       }
+
       toast.success("Job updated");
       onOpenChange(false);
       onSuccess?.();
@@ -328,419 +493,623 @@ export function EditJobDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
 
-      <DialogContent className="sm:max-w-[620px]">
-        <DialogHeader>
-          <DialogTitle>Edit Job</DialogTitle>
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] p-0">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b">
+          <DialogTitle className="text-xl">Edit Job</DialogTitle>
           <DialogDescription>
-            Update job details, link manager/supplier, and attach PDFs.
+            Update job details, assign products, and manage attachments
           </DialogDescription>
         </DialogHeader>
 
         {initialLoading ? (
-          <div className="py-10 flex items-center justify-center gap-2 text-slate-400">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading job...
+          <div className="py-16 flex items-center justify-center gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span>Loading job details...</span>
           </div>
         ) : (
-          <form
-            onSubmit={handleSubmit}
-            className="space-y-5 max-h-[75vh] overflow-y-auto py-2 pr-3"
-          >
-            {/* Job meta */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="job-number">Job Number *</Label>
-                <Input
-                  id="job-number"
-                  placeholder="e.g., 5962"
-                  value={jobNumber}
-                  onChange={(e) => setJobNumber(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="site-name">Site Name *</Label>
-                <Input
-                  id="site-name"
-                  placeholder="e.g., Kyalami Corner Interior"
-                  value={siteName}
-                  onChange={(e) => setSiteName(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-            </div>
+          <form onSubmit={handleSubmit} className="flex flex-col">
+            <div className="px-6 py-4 space-y-6 overflow-y-auto max-h-[60vh]">
+              {/* Basic Info */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Basic Information
+                </h3>
 
-            <div className="space-y-2">
-              <Label htmlFor="client">Client / Company Name</Label>
-              <Input
-                id="client"
-                placeholder="e.g., Framecore Construction"
-                value={client}
-                onChange={(e) => setClient(e.target.value)}
-                disabled={loading}
-              />
-            </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="job-number">
+                      Job Number <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="job-number"
+                      placeholder="e.g., 5962"
+                      value={jobNumber}
+                      onChange={(e) => setJobNumber(e.target.value)}
+                      disabled={loading}
+                    />
+                  </div>
 
-            {/* Manager + Supplier */}
-            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4 space-y-4">
-              <div className="flex items-start gap-2 text-xs text-slate-400">
-                <Info className="h-4 w-4 mt-0.5" />
-                <p>
-                  Manager and Supplier are optional, but they make filtering and
-                  costing easier.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Manager select */}
-                <div className="space-y-2">
-                  <Label htmlFor="manager-select">Manager (optional)</Label>
-                  <Select
-                    value={managerId}
-                    onValueChange={setManagerId}
-                    disabled={loading}
-                  >
-                    <SelectTrigger
-                      id="manager-select"
-                      className="bg-slate-900 border-slate-800"
-                    >
-                      <SelectValue placeholder="Select manager" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {managers.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          {m.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="space-y-2">
+                    <Label htmlFor="site-name">
+                      Site Name <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="site-name"
+                      placeholder="e.g., Kyalami Corner Interior"
+                      value={siteName}
+                      onChange={(e) => setSiteName(e.target.value)}
+                      disabled={loading}
+                    />
+                  </div>
                 </div>
 
-                {/* Manager raw */}
                 <div className="space-y-2">
-                  <Label htmlFor="manager-raw">Manager Name (raw)</Label>
+                  <Label htmlFor="client">Client / Company Name</Label>
                   <Input
-                    id="manager-raw"
-                    placeholder="Type name (used for Excel imports too)"
-                    value={managerNameRaw}
-                    onChange={(e) => setManagerNameRaw(e.target.value)}
+                    id="client"
+                    placeholder="e.g., Framecore Construction"
+                    value={client}
+                    onChange={(e) => setClient(e.target.value)}
                     disabled={loading}
                   />
                 </div>
-
-                {/* Supplier select */}
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="supplier-select">Supplier (optional)</Label>
-                  <Select
-                    value={supplierId}
-                    onValueChange={setSupplierId}
-                    disabled={loading}
-                  >
-                    <SelectTrigger
-                      id="supplier-select"
-                      className="bg-slate-900 border-slate-800"
-                    >
-                      <SelectValue placeholder="Select supplier" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {suppliers.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
-            </div>
 
-            {/* Job Products */}
-            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4 space-y-3">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <Label>Job Products</Label>
-                  <p className="text-xs text-slate-400">
-                    Add, remove, and edit products for this job.
+              {/* Manager & Supplier */}
+              <div className="space-y-4">
+                <div className="flex items-start gap-2 p-3 bg-muted/50 border">
+                  <Info className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                  <p className="text-xs text-muted-foreground">
+                    Manager and Supplier are optional but recommended for better
+                    filtering and cost tracking.
                   </p>
                 </div>
-                <div className="flex gap-2">
-                  <Select
-                    value={addProductId}
-                    onValueChange={setAddProductId}
-                    disabled={loading}
-                  >
-                    <SelectTrigger className="min-w-[180px] bg-slate-900 border-slate-800">
-                      <SelectValue placeholder="Add product..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {allProducts
-                        .filter(
-                          (p) =>
-                            !jobProducts.some((jp) => jp.productId === p.id),
-                        )
-                        .map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="manager-select">Manager</Label>
+                    <Select
+                      value={managerId}
+                      onValueChange={setManagerId}
+                      disabled={loading}
+                    >
+                      <SelectTrigger id="manager-select">
+                        <SelectValue placeholder="Select manager" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {managers.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.name}
                           </SelectItem>
                         ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      if (!addProductId) return;
-                      const prod = allProducts.find(
-                        (p) => p.id === addProductId,
-                      );
-                      if (!prod) return;
-                      setJobProducts((prev) => [
-                        ...prev,
-                        {
-                          productId: prod.id,
-                          productName: prod.name,
-                          required: true,
-                          quantity: null,
-                          unit: "",
-                        },
-                      ]);
-                      setAddProductId("");
-                    }}
-                    disabled={loading || !addProductId}
-                  >
-                    Add
-                  </Button>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="manager-raw">Manager Name (Raw)</Label>
+                    <Input
+                      id="manager-raw"
+                      placeholder="For Excel imports"
+                      value={managerNameRaw}
+                      onChange={(e) => setManagerNameRaw(e.target.value)}
+                      disabled={loading}
+                    />
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Supplier</Label>
+                    <Popover open={supplierOpen} onOpenChange={setSupplierOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={supplierOpen}
+                          className="w-full justify-between"
+                          disabled={loading}
+                        >
+                          {supplierId
+                            ? suppliers.find((s) => s.id === supplierId)?.name
+                            : "Select supplier..."}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-full p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Search supplier..." />
+                          <CommandEmpty>No supplier found.</CommandEmpty>
+                          <CommandGroup>
+                            {suppliers.map((supplier) => (
+                              <CommandItem
+                                key={supplier.id}
+                                value={supplier.name}
+                                onSelect={() => {
+                                  setSupplierId(
+                                    supplier.id === supplierId
+                                      ? ""
+                                      : supplier.id,
+                                  );
+                                  setSupplierOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    supplierId === supplier.id
+                                      ? "opacity-100"
+                                      : "opacity-0",
+                                  )}
+                                />
+                                {supplier.name}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </div>
               </div>
-              <div className="space-y-2">
-                {jobProducts.length === 0 ? (
-                  <div className="text-xs text-slate-400">
-                    No products assigned.
+
+              {/* Attachments */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Attachments
+                </h3>
+
+                {/* ✅ Only checkbox controls + safety received toggle (conditional) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border p-4">
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      id="spec-not-required"
+                      checked={specNotRequired}
+                      onCheckedChange={(v) =>
+                        setSpecNotRequired(checkedToBool(v))
+                      }
+                      disabled={loading}
+                    />
+                    <Label htmlFor="spec-not-required">Spec Not Required</Label>
                   </div>
-                ) : (
-                  jobProducts.map((jp, idx) => (
-                    <div
-                      key={jp.productId}
-                      className="flex items-center gap-2 border border-slate-800 rounded p-2 bg-slate-900/40"
-                    >
-                      <span className="flex-1 text-slate-100">
-                        {jp.productName}
-                      </span>
-                      <label className="text-xs text-slate-400 flex items-center gap-1">
-                        Qty
-                        <Input
-                          type="number"
-                          min={0}
-                          value={jp.quantity ?? ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setJobProducts((prev) =>
-                              prev.map((p, i) =>
-                                i === idx
-                                  ? {
-                                      ...p,
-                                      quantity: val === "" ? null : Number(val),
-                                    }
-                                  : p,
-                              ),
-                            );
-                          }}
-                          className="w-16 bg-slate-900 border-slate-800"
-                          disabled={loading}
-                        />
-                      </label>
-                      <label className="text-xs text-slate-400 flex items-center gap-1">
-                        Unit
-                        <Input
-                          value={jp.unit ?? ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setJobProducts((prev) =>
-                              prev.map((p, i) =>
-                                i === idx ? { ...p, unit: val } : p,
-                              ),
-                            );
-                          }}
-                          className="w-14 bg-slate-900 border-slate-800"
-                          disabled={loading}
-                        />
-                      </label>
-                      <label className="text-xs text-slate-400 flex items-center gap-1">
-                        <input
-                          type="checkbox"
-                          checked={jp.required}
-                          onChange={(e) => {
-                            setJobProducts((prev) =>
-                              prev.map((p, i) =>
-                                i === idx
-                                  ? { ...p, required: e.target.checked }
-                                  : p,
-                              ),
-                            );
-                          }}
-                          disabled={loading}
-                        />
-                        Required
-                      </label>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          setJobProducts((prev) =>
-                            prev.filter((_, i) => i !== idx),
-                          )
+
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      id="boq-not-required"
+                      checked={boqNotRequired}
+                      onCheckedChange={(v) =>
+                        setBoqNotRequired(checkedToBool(v))
+                      }
+                      disabled={loading}
+                    />
+                    <Label htmlFor="boq-not-required">BOQ Not Required</Label>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-3">
+                      <Checkbox
+                        id="safetyfile-not-required"
+                        checked={safetyFileNotRequired}
+                        onCheckedChange={(v) =>
+                          setSafetyFileNotRequired(checkedToBool(v))
                         }
                         disabled={loading}
-                        className="text-red-400 hover:text-red-300"
-                        title="Remove"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
+                      />
+                      <Label htmlFor="safetyfile-not-required">
+                        Safety File Not Required
+                      </Label>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-            {/* Attachments */}
-            <div className="space-y-3">
-              <Label>Attachments (PDF)</Label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* Spec */}
-                <div className="border border-slate-800 rounded p-3 space-y-2 bg-slate-950/30">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-slate-300" />
-                      <span className="text-sm font-medium text-slate-100">
-                        Project Spec
-                      </span>
+
+                    {!safetyFileNotRequired && (
+                      <div className="flex items-center gap-3 pl-7">
+                        <Checkbox
+                          id="safetyfile-received"
+                          checked={safetyFileReceived}
+                          onCheckedChange={(v) =>
+                            setSafetyFileReceived(checkedToBool(v))
+                          }
+                          disabled={loading}
+                        />
+                        <Label htmlFor="safetyfile-received">
+                          Safety File Received
+                        </Label>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Spec + BOQ uploads only if required */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Spec PDF */}
+                  <div className="border p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">
+                          Project Spec
+                        </span>
+                      </div>
+                      {!specNotRequired && specPdfUrl && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={() => {
+                            setSpecPdfUrl(null);
+                            setSpecFileName(null);
+                          }}
+                          disabled={loading || specUploading}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
-                    {specPdfUrl && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2"
-                        onClick={() => {
-                          setSpecPdfUrl(null);
-                          setSpecFileName(null);
-                        }}
-                        disabled={loading || specUploading}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
+
+                    {specNotRequired ? (
+                      <p className="text-xs text-muted-foreground">
+                        Hidden (Not Required)
+                      </p>
+                    ) : specPdfUrl ? (
+                      <p className="text-xs text-muted-foreground truncate">
+                        {specFileName || specPdfUrl}
+                      </p>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center border-2 border-dashed py-8 cursor-pointer hover:bg-muted/50 transition-colors">
+                        <Upload className="h-6 w-6 text-muted-foreground mb-2" />
+                        <span className="text-sm font-medium">
+                          Upload Spec PDF
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          Max 20MB
+                        </span>
+                        <input
+                          type="file"
+                          accept="application/pdf"
+                          className="hidden"
+                          onChange={(e) =>
+                            handlePdfUpload(
+                              e,
+                              (url, fname) => {
+                                setSpecPdfUrl(url);
+                                setSpecFileName(fname);
+                              },
+                              setSpecUploading,
+                            )
+                          }
+                          disabled={loading || specUploading}
+                        />
+                      </label>
+                    )}
+
+                    {specUploading && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Uploading...
+                      </div>
                     )}
                   </div>
 
-                  {specPdfUrl ? (
-                    <p className="text-xs text-slate-400 break-all">
-                      {specFileName || specPdfUrl}
-                    </p>
-                  ) : (
-                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded py-6 cursor-pointer hover:border-slate-700 transition-colors">
-                      <Upload className="h-5 w-5 text-slate-400 mb-2" />
-                      <span className="text-sm text-slate-300">
-                        Upload Spec PDF
-                      </span>
-                      <span className="text-[11px] text-slate-500">
-                        PDF up to 20MB
-                      </span>
-                      <input
-                        type="file"
-                        accept="application/pdf"
-                        className="hidden"
-                        onChange={(e) =>
-                          handlePdfUpload(
-                            e,
-                            (url, fname) => {
-                              setSpecPdfUrl(url);
-                              setSpecFileName(fname);
-                            },
-                            setSpecUploading,
-                          )
-                        }
-                        disabled={loading || specUploading}
-                      />
-                    </label>
-                  )}
-
-                  {specUploading && (
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Uploading spec...
+                  {/* BOQ PDF */}
+                  <div className="border p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">BOQ</span>
+                      </div>
+                      {!boqNotRequired && boqPdfUrl && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={() => {
+                            setBoqPdfUrl(null);
+                            setBoqFileName(null);
+                          }}
+                          disabled={loading || boqUploading}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                {/* BOQ */}
-                <div className="border border-slate-800 rounded p-3 space-y-2 bg-slate-950/30">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-slate-300" />
-                      <span className="text-sm font-medium text-slate-100">
-                        BOQ
-                      </span>
-                    </div>
-                    {boqPdfUrl && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2"
-                        onClick={() => {
-                          setBoqPdfUrl(null);
-                          setBoqFileName(null);
-                        }}
-                        disabled={loading || boqUploading}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
+                    {boqNotRequired ? (
+                      <p className="text-xs text-muted-foreground">
+                        Hidden (Not Required)
+                      </p>
+                    ) : boqPdfUrl ? (
+                      <p className="text-xs text-muted-foreground truncate">
+                        {boqFileName || boqPdfUrl}
+                      </p>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center border-2 border-dashed py-8 cursor-pointer hover:bg-muted/50 transition-colors">
+                        <Upload className="h-6 w-6 text-muted-foreground mb-2" />
+                        <span className="text-sm font-medium">
+                          Upload BOQ PDF
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          Max 20MB
+                        </span>
+                        <input
+                          type="file"
+                          accept="application/pdf"
+                          className="hidden"
+                          onChange={(e) =>
+                            handlePdfUpload(
+                              e,
+                              (url, fname) => {
+                                setBoqPdfUrl(url);
+                                setBoqFileName(fname);
+                              },
+                              setBoqUploading,
+                            )
+                          }
+                          disabled={loading || boqUploading}
+                        />
+                      </label>
+                    )}
+
+                    {boqUploading && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Uploading...
+                      </div>
                     )}
                   </div>
+                </div>
+              </div>
 
-                  {boqPdfUrl ? (
-                    <p className="text-xs text-slate-400 break-all">
-                      {boqFileName || boqPdfUrl}
+              {/* Products (same logic as before) */}
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Products
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Manage products required for this job
                     </p>
-                  ) : (
-                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded py-6 cursor-pointer hover:border-slate-700 transition-colors">
-                      <Upload className="h-5 w-5 text-slate-400 mb-2" />
-                      <span className="text-sm text-slate-300">
-                        Upload BOQ PDF
-                      </span>
-                      <span className="text-[11px] text-slate-500">
-                        PDF up to 20MB
-                      </span>
-                      <input
-                        type="file"
-                        accept="application/pdf"
-                        className="hidden"
-                        onChange={(e) =>
-                          handlePdfUpload(
-                            e,
-                            (url, fname) => {
-                              setBoqPdfUrl(url);
-                              setBoqFileName(fname);
-                            },
-                            setBoqUploading,
-                          )
+                  </div>
+                  <div className="flex gap-2">
+                    <CommandDialog
+                      open={variantPickerOpen}
+                      onOpenChange={(v) => {
+                        setVariantPickerOpen(v);
+                        if (!v) {
+                          setVariantQuery("");
+                          setVariantResults([]);
+                          setVariantCursor(null);
                         }
-                        disabled={loading || boqUploading}
-                      />
-                    </label>
-                  )}
+                      }}
+                    >
+                      <Command className="rounded-lg border-slate-800">
+                        <CommandInput
+                          placeholder="Search by product, supplier, or SKU..."
+                          value={variantQuery}
+                          onValueChange={setVariantQuery}
+                          className="border-0 focus:ring-0"
+                        />
+                        <CommandList>
+                          {variantLoading && (
+                            <div className="px-4 py-8 text-center text-sm text-slate-400 flex items-center justify-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <span>Searching products...</span>
+                            </div>
+                          )}
 
-                  {boqUploading && (
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Uploading BOQ...
-                    </div>
-                  )}
+                          <CommandEmpty className="py-8 text-center text-sm text-slate-400">
+                            {variantQuery.trim().length < 2
+                              ? "Type at least 2 characters to search"
+                              : "No products found"}
+                          </CommandEmpty>
+
+                          <CommandGroup heading="Available Products">
+                            {variantResults.map((v) => (
+                              <CommandItem
+                                key={v.id}
+                                value={`${v.productName} ${v.supplierName} ${v.unit} ${formatCurrency(v.price)}`}
+                                onSelect={() => {
+                                  setJobProducts((prev) => {
+                                    if (
+                                      prev.some(
+                                        (x) => x.productId === v.productId,
+                                      )
+                                    )
+                                      return prev;
+                                    const prod = allProducts.find(
+                                      (p) => p.id === v.productId,
+                                    );
+                                    if (!prod) return prev;
+                                    return [
+                                      ...prev,
+                                      {
+                                        productId: prod.id,
+                                        productName: prod.name,
+                                        required: true,
+                                        quantity: null,
+                                        unit: `${v.size}${v.unit}`,
+                                      },
+                                    ];
+                                  });
+                                  setVariantPickerOpen(false);
+                                }}
+                                className="flex items-start gap-3 px-4 py-3 cursor-pointer"
+                              >
+                                <Package className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                                <div className="flex flex-col flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-medium text-slate-200">
+                                      {v.productName}
+                                    </span>
+                                    <span className="text-xs text-slate-500">
+                                      •
+                                    </span>
+                                    <span className="text-xs text-slate-400">
+                                      {v.supplierName}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-3 mt-1">
+                                    <span className="text-xs text-slate-500">
+                                      {v.size}
+                                      {v.unit}
+                                    </span>
+                                    <span className="text-xs font-semibold text-blue-400">
+                                      {formatCurrency(v.price)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </CommandItem>
+                            ))}
+
+                            {variantCursor && (
+                              <CommandItem
+                                value="__load_more_variants__"
+                                onSelect={loadMoreVariants}
+                                className="justify-center"
+                              >
+                                <span className="text-sm text-blue-400">
+                                  {variantLoading
+                                    ? "Loading..."
+                                    : "Load more products"}
+                                </span>
+                              </CommandItem>
+                            )}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </CommandDialog>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setVariantPickerOpen(true)}
+                      disabled={loading}
+                    >
+                      <Search className="h-4 w-4 mr-2" />
+                      Add Product
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="border">
+                  <div className="relative max-h-[300px] overflow-auto">
+                    <table className="w-full">
+                      <thead className="sticky top-0 bg-background z-10 border-b">
+                        <tr className="text-sm text-muted-foreground">
+                          <th className="text-left font-medium p-3 w-[50%]">
+                            Product
+                          </th>
+                          <th className="text-left font-medium p-3 w-[15%]">
+                            Usage
+                          </th>
+                          <th className="text-left font-medium p-3 w-[15%]">
+                            Required
+                          </th>
+                          <th className="text-right font-medium p-3 w-[20%]">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {jobProducts.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={4}
+                              className="text-center py-8 text-muted-foreground text-sm"
+                            >
+                              No products assigned yet
+                            </td>
+                          </tr>
+                        ) : (
+                          jobProducts.map((jp, idx) => {
+                            const product = allProducts.find(
+                              (p) => p.id === jp.productId,
+                            );
+                            const usageType = product?.usageType;
+
+                            let usageLabel = "-";
+                            let usageClass =
+                              "bg-muted text-muted-foreground border border-muted-foreground/20";
+
+                            if (usageType === "BOTH") {
+                              usageLabel = "Ext/Int";
+                              usageClass =
+                                "bg-purple-200 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-400 dark:border-purple-800";
+                            } else if (usageType === "INTERNAL") {
+                              usageLabel = "Internal";
+                              usageClass =
+                                "bg-blue-200 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-400 dark:border-blue-800";
+                            } else if (usageType === "EXTERNAL") {
+                              usageLabel = "External";
+                              usageClass =
+                                "bg-amber-200 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-400 dark:border-amber-800";
+                            }
+
+                            return (
+                              <tr
+                                key={`${jp.productId}-${idx}`}
+                                className="border-b last:border-0 hover:bg-muted/50"
+                              >
+                                <td className="p-3 font-medium text-sm">
+                                  {jp.productName}
+                                </td>
+                                <td className="p-3">
+                                  <span
+                                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${usageClass}`}
+                                  >
+                                    {usageLabel}
+                                  </span>
+                                </td>
+                                <td className="p-3">
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={jp.required}
+                                      onChange={(e) => {
+                                        const checked = e.target.checked;
+                                        setJobProducts((prev) =>
+                                          prev.map((p, i) =>
+                                            i === idx
+                                              ? { ...p, required: checked }
+                                              : p,
+                                          ),
+                                        );
+                                      }}
+                                      disabled={loading}
+                                      className="rounded"
+                                    />
+                                    <span className="text-sm">Yes</span>
+                                  </label>
+                                </td>
+                                <td className="p-3 text-right">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                      setJobProducts((prev) =>
+                                        prev.filter((_, i) => i !== idx),
+                                      )
+                                    }
+                                    disabled={loading}
+                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-2 justify-end">
+            {/* Footer Actions */}
+            <div className="sticky top-0 px-6 py-4 bg-background border-t flex items-center justify-end gap-3">
               <Button
                 type="button"
                 variant="outline"
@@ -749,12 +1118,8 @@ export function EditJobDialog({
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={loading || !jobId}
-                className="gap-2"
-              >
-                {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              <Button type="submit" disabled={loading || !jobId}>
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save Changes
               </Button>
             </div>
@@ -764,20 +1129,3 @@ export function EditJobDialog({
     </Dialog>
   );
 }
-
-/**
- * Optional helper trigger you can use:
- *
- * <EditJobDialog
- *   jobId={selectedJobId}
- *   open={editOpen}
- *   onOpenChange={setEditOpen}
- *   onSuccess={() => router.refresh()}
- *   trigger={
- *     <Button variant="ghost" size="sm" className="gap-2">
- *       <Pencil className="h-4 w-4" />
- *       Edit
- *     </Button>
- *   }
- * />
- */

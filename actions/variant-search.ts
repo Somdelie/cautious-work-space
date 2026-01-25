@@ -1,4 +1,3 @@
-// src/actions/variant-search.ts
 "use server";
 
 import { prisma } from "@/lib/prisma";
@@ -7,13 +6,11 @@ export type VariantSearchRow = {
   id: string;
   productId: string;
   supplierId: string;
-
   productName: string;
   supplierName: string;
-
   size: number;
-  unit: string;
-  price: number;
+  unit: string; // serialize enum for client
+  price: string; // Decimal -> string
   sku: string | null;
 };
 
@@ -22,19 +19,20 @@ export async function searchVariantsAction(input: {
   take?: number;
   cursor?: string | null;
 }) {
+  const take = input.take ?? 20;
   const q = input.q.trim();
-  const take = Math.min(Math.max(input.take ?? 20, 5), 50);
-  const cursor = input.cursor ?? null;
 
-  if (q.length < 2) {
+  if (q.length < 2)
     return {
       success: true as const,
       data: [] as VariantSearchRow[],
       nextCursor: null as string | null,
     };
-  }
 
+  // We page by variant.id (stable)
   const rows = await prisma.productVariant.findMany({
+    take: take + 1,
+    ...(input.cursor ? { skip: 1, cursor: { id: input.cursor } } : {}),
     where: {
       isActive: true,
       OR: [
@@ -51,17 +49,14 @@ export async function searchVariantsAction(input: {
         },
       ],
     },
-    take: take + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    orderBy: { createdAt: "desc" },
     select: {
       id: true,
-      productId: true,
-      supplierId: true,
       size: true,
       unit: true,
       price: true,
       sku: true,
+      productId: true,
+      supplierId: true,
       supplierProduct: {
         select: {
           product: { select: { name: true } },
@@ -69,25 +64,22 @@ export async function searchVariantsAction(input: {
         },
       },
     },
+    orderBy: { id: "asc" },
   });
 
-  const hasMore = rows.length > take;
-  const page = hasMore ? rows.slice(0, take) : rows;
-  const nextCursor = hasMore ? (page[page.length - 1]?.id ?? null) : null;
+  const nextCursor = rows.length > take ? rows[take].id : null;
 
-  return {
-    success: true as const,
-    data: page.map((v) => ({
-      id: v.id,
-      productId: v.productId,
-      supplierId: v.supplierId,
-      productName: v.supplierProduct.product.name,
-      supplierName: v.supplierProduct.supplier.name,
-      size: v.size,
-      unit: String(v.unit),
-      price: v.price,
-      sku: v.sku,
-    })),
-    nextCursor,
-  };
+  const data: VariantSearchRow[] = rows.slice(0, take).map((r) => ({
+    id: r.id,
+    productId: r.productId,
+    supplierId: r.supplierId,
+    productName: r.supplierProduct.product.name,
+    supplierName: r.supplierProduct.supplier.name,
+    size: r.size,
+    unit: String(r.unit),
+    price: r.price.toString(),
+    sku: r.sku,
+  }));
+
+  return { success: true as const, data, nextCursor };
 }

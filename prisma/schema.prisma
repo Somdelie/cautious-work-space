@@ -6,131 +6,101 @@ datasource db {
   provider = "postgresql"
 }
 
-enum UsageType {
-  INTERNAL
-  EXTERNAL
-  BOTH
-}
-
-enum MeasureUnit {
-  L
-  KG
-  EA
-}
-
-enum JobSource {
-  APP
-  EXCEL
-}
-
-model User {
-  id       String  @id @default(cuid())
-  name     String
-  phone    String
-  email    String  @unique
-  password String
-  role     String  @default("user")
-  blocked  Boolean @default(false)
-
-  passwordResetCodeHash  String?
-  passwordResetExpiresAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+model Supplier {
+  id               String            @id @default(cuid())
+  name             String            @unique
+  logoUrl          String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @default(now()) @updatedAt
+  supplierProducts SupplierProduct[]
+  jobs             Job[]
+  orderItems       OrderItem[]
 }
 
 model Manager {
-  id    String  @id @default(cuid())
-  name  String
-  phone String?
-  email String?
-
-  jobs Job[]
-
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+  jobs      Job[]
 }
 
-model Supplier {
-  id      String  @id @default(cuid())
-  name    String  @unique
-  logoUrl String?
+model User {
+  id                     String    @id @default(cuid())
+  name                   String
+  phone                  String
+  email                  String    @unique
+  password               String
+  role                   String    @default("user")
+  blocked                Boolean   @default(false)
+  passwordResetCodeHash  String?
+  passwordResetExpiresAt DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @default(now()) @updatedAt
 
-  supplierProducts SupplierProduct[]
-  jobs             Job[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-
-  orderItems OrderItem[]
+  timesheetEntries TimesheetEntry[]
 }
 
+// from Product model. Consolidated OrderItem model.
 model Product {
   id        String    @id @default(cuid())
   name      String    @unique
   shortcut  String?
   usageType UsageType @default(BOTH)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
+  jobProducts      JobProduct[]
   supplierProducts SupplierProduct[]
+  orderItems       OrderItem[]
   spreadRates      SpreadRate[]
-
-  jobProducts JobProduct[]
-  orderItems  OrderItem[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
 }
 
+// Junction table for many-to-many relationship between Supplier and Product
 model SupplierProduct {
   supplierId String
   productId  String
+  isActive   Boolean          @default(true)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @default(now()) @updatedAt
+  variants   ProductVariant[]
+  product    Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplier   Supplier         @relation(fields: [supplierId], references: [id], onDelete: Cascade)
 
-  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  variants ProductVariant[]
-
-  isActive Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-
-  @@id([supplierId, productId]) // composite id keeps it unique naturally
+  @@id([supplierId, productId])
   @@index([productId])
 }
 
 model ProductVariant {
   id              String          @id @default(cuid())
-  supplierId      String
+  size            Float
+  unit            MeasureUnit
+  price           Decimal         @default(0) @db.Decimal(12, 2)
+  sku             String?
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @default(now()) @updatedAt
   productId       String
+  supplierId      String
+  orderItems      OrderItem[]
   supplierProduct SupplierProduct @relation(fields: [supplierId, productId], references: [supplierId, productId], onDelete: Cascade)
-
-  size     Float
-  unit     MeasureUnit
-  price    Float       @default(0)
-  sku      String?
-  isActive Boolean     @default(true)
-
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @default(now()) @updatedAt
-  orderItems OrderItem[]
+  jobProducts     JobProduct[]
 
   @@unique([supplierId, productId, size, unit])
 }
 
 model SpreadRate {
-  id        String  @id @default(cuid())
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  // Always store as "units per m²"
+  id          String      @id @default(cuid())
   consumption Float
   unit        MeasureUnit
   perCoat     Boolean     @default(false)
   notes       String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @default(now()) @updatedAt
+  productId   String
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
 }
@@ -138,98 +108,217 @@ model SpreadRate {
 model Job {
   id        String @id @default(cuid())
   jobNumber String @unique
-  siteName  String
 
-  client            String?
-  specsReceived     Boolean @default(false)
-  finishingSchedule String?
-  safetyFile        String?
-
-  loa           String?
-  pointers      String?
-  dateRequested DateTime?
-
-  source         JobSource @default(APP)
-  importedAt     DateTime?
-  excelFileName  String?
-  excelSheetName String?
-  excelRowRef    String?
-
-  managerNameRaw String?
+  // ✅ your UI expects these names
+  siteName String
+  client   String?
+  address  String?
 
   managerId  String?
   supplierId String?
 
-  manager  Manager?  @relation(fields: [managerId], references: [id])
-  supplier Supplier? @relation(fields: [supplierId], references: [id])
+  source JobSource @default(APP)
 
+  // ✅ attachments for spec/boq only (urls optional)
   specPdfUrl String?
   boqPdfUrl  String?
 
-  jobProducts JobProduct[]
-  orders      Order[]
+  // ✅ "not required" flags (job-level)
+  specNotRequired       Boolean @default(false)
+  boqNotRequired        Boolean @default(false)
+  safetyFileNotRequired Boolean @default(false)
 
+  // ✅ safety file is boolean received (NO URL)
+  safetyFile Boolean @default(false)
+
+  // ✅ you already use this in JobsDataTable
+  specsReceived Boolean @default(false)
+
+  // ✅ keep if you use them (your actions have these)
   isStarted  Boolean   @default(false)
   isFinished Boolean   @default(false)
   startedAt  DateTime?
   finishedAt DateTime?
 
+  // For Excel sync
+  importedAt        DateTime  @default(now())
+  excelFileName     String?
+  excelSheetName    String?
+  excelRowRef       String?
+  dateRequested     DateTime?
+  finishingSchedule String?
+  loa               String?
+  pointers          String?
+  managerNameRaw    String?
+
   createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  updatedAt DateTime @updatedAt
+
+  manager  Manager?  @relation(fields: [managerId], references: [id])
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+
+  jobProducts JobProduct[]
+  orders      Order[]
+
+  timesheetEntries TimesheetEntry[]
+  jobCostEntries   JobCostEntry[]
+  jobCostSummaries JobCostSummary[]
 }
 
+// Junction table for many-to-many relationship between Job and Product
 model JobProduct {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   jobId     String
   productId String
+  required  Boolean @default(false)
 
-  required Boolean @default(false)
-  quantity Float?
+  quantity Decimal? @db.Decimal(12, 2)
   unit     String?
 
-  job     Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  // ✅ estimate selection (professional)
+  estimateVariantId String?
+  estimateUnitPrice Decimal? @db.Decimal(12, 2) // snapshot of variant.price at time selected
+
+  job             Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  product         Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  estimateVariant ProductVariant? @relation(fields: [estimateVariantId], references: [id], onDelete: SetNull)
 
   @@unique([jobId, productId])
+  @@index([estimateVariantId])
 }
 
+// Consolidated Order and OrderItem models
 model Order {
-  id          String @id @default(cuid())
-  orderNumber String @unique
+  id          String      @id @default(cuid())
+  orderNumber String      @unique
   jobId       String
-  job         Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
-
-  items OrderItem[]
-
-  subtotal Float @default(0)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @default(now()) @updatedAt
+  subtotal    Decimal     @default(0) @db.Decimal(12, 2)
+  job         Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  items       OrderItem[]
 
   @@unique([orderNumber, jobId])
 }
 
+// Consolidated OrderItem model
 model OrderItem {
-  id      String @id @default(cuid())
-  orderId String
-  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  // what was ordered
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-
+  id         String         @id @default(cuid())
+  orderId    String
+  quantity   Decimal        @db.Decimal(12, 2)
+  createdAt  DateTime       @default(now())
+  lineTotal  Decimal        @db.Decimal(12, 2)
+  unitPrice  Decimal        @db.Decimal(12, 2)
+  variantId  String
+  productId  String
   supplierId String
-  supplier   Supplier @relation(fields: [supplierId], references: [id])
-
-  variantId String
-  variant   ProductVariant @relation(fields: [variantId], references: [id])
-
-  quantity  Float // number of packs
-  unitPrice Float // snapshot
-  lineTotal Float // snapshot
-
-  createdAt DateTime @default(now())
+  order      Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product    Product        @relation(fields: [productId], references: [id])
+  supplier   Supplier       @relation(fields: [supplierId], references: [id])
+  variant    ProductVariant @relation(fields: [variantId], references: [id])
 
   @@index([productId])
   @@index([supplierId])
+}
+
+// Enums used in the schema
+enum UsageType {
+  INTERNAL
+  EXTERNAL
+  BOTH
+}
+
+// Units of measurement for product variants and spread rates
+enum MeasureUnit {
+  L
+  KG
+  EA
+}
+
+// Source of the job creation
+enum JobSource {
+  APP
+  EXCEL
+}
+
+// Additional enums for future use
+enum TimesheetStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Additional enums for future use
+enum JobCostType {
+  MATERIAL_ACTUAL
+  MATERIAL_ESTIMATE
+  LABOR_ACTUAL
+  ADJUSTMENT
+}
+
+// Additional enums for future use
+enum JobCostSource {
+  ORDER_ITEM
+  JOB_PRODUCT
+  TIMESHEET
+  MANUAL
+}
+
+// New model for job cost entries
+model JobCostEntry {
+  id        String        @id @default(cuid())
+  jobId     String
+  type      JobCostType
+  source    JobCostSource
+  sourceId  String?
+  amount    Decimal       @db.Decimal(12, 2) // + add, - subtract
+  note      String?
+  createdAt DateTime      @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, type])
+  @@index([source, sourceId])
+  @@index([createdAt])
+}
+
+// New model for job cost summaries
+model JobCostSummary {
+  jobId String @id
+
+  materialsActual   Decimal @default(0) @db.Decimal(12, 2)
+  materialsEstimate Decimal @default(0) @db.Decimal(12, 2)
+  laborActual       Decimal @default(0) @db.Decimal(12, 2)
+
+  totalActual   Decimal @default(0) @db.Decimal(12, 2)
+  totalEstimate Decimal @default(0) @db.Decimal(12, 2)
+
+  updatedAt DateTime @updatedAt
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+// New model for timesheet entries
+model TimesheetEntry {
+  id         String          @id @default(cuid())
+  jobId      String
+  workerName String
+  date       DateTime
+  hours      Decimal         @db.Decimal(6, 2)
+  rate       Decimal         @db.Decimal(12, 2)
+  cost       Decimal         @default(0) @db.Decimal(12, 2)
+  status     TimesheetStatus @default(PENDING)
+  note       String?
+
+  approvedAt DateTime?
+  approvedBy String? // User.id (optional)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  job      Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  approver User? @relation(fields: [approvedBy], references: [id], onDelete: SetNull)
+
+  @@index([jobId, date])
+  @@index([status])
 }

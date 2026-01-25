@@ -1,23 +1,30 @@
+import { Decimal } from "@prisma/client/runtime/client";
+
 export function formatCurrency(
-  amount: number,
-  locale: string = "en-US",
-  currency: string = "ZAR"
+  amount: number | string | Decimal | null | undefined,
+  locale: string = "en-ZA",
+  currency: string = "ZAR",
 ): string {
-  // Handle invalid amounts
-  if (typeof amount !== "number" || isNaN(amount)) {
-    return "R0.00";
-  }
+  if (amount === null || amount === undefined) return "R0.00";
+
+  const n =
+    amount instanceof Decimal
+      ? Number(amount.toString())
+      : typeof amount === "string"
+        ? Number(amount)
+        : amount;
+
+  if (!Number.isFinite(n)) return "R0.00";
 
   try {
     const formatted = new Intl.NumberFormat(locale, {
       style: "currency",
-      currency: currency,
-    }).format(amount);
+      currency,
+    }).format(n);
 
-    // Replace ZAR with R
+    // Replace ZAR with R (optional)
     return formatted.replace("ZAR", "R");
-  } catch (error) {
-    // Fallback if formatting fails
-    return `R${amount.toFixed(2)}`;
+  } catch {
+    return `R${n.toFixed(2)}`;
   }
 }

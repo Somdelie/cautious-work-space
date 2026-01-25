@@ -1,13 +1,14 @@
-/* eslint-disable react-hooks/incompatible-library */
 "use client";
 
-import { useMemo, useState } from "react";
-import {
-  type ColumnDef,
-  type SortingState,
-  type ColumnFiltersState,
-  type VisibilityState,
-} from "@tanstack/react-table";
+import { useMemo, useState, useEffect, useRef } from "react";
+import { type ColumnDef, type Table } from "@tanstack/react-table";
+import { DataTable } from "@/components/ui/data-table";
+import { Input } from "@/components/ui/input";
+import { EditJobDialog } from "../dialogs/edit-job";
+import { ChevronDown, Columns3, MoreVertical } from "lucide-react";
+import { ManagerCombobox } from "@/components/common/ManagerCombobox";
+import { SyncJobsButton } from "../common/SyncJobsButton";
+import { CreateJobDialog } from "../dialogs/create-job";
 import {
   ArrowUpDown,
   MoreHorizontal,
@@ -29,52 +30,77 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { DataTable } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { ViewJobDialog } from "@/components/dialogs/view-job";
 import { DeleteJobDialog } from "@/components/dialogs/delete-job";
 import { markJobAsStarted, markJobAsFinished } from "@/actions/job";
 import { useRouter } from "next/navigation";
-import { EditJobDialog } from "../dialogs/edit-job-dialog";
+import { toast } from "sonner";
 
-type Job = {
+// JobRow type
+export type JobRow = {
   id: string;
   jobNumber: string;
   siteName: string;
-  managerId: string | null;
-  supplierId: string | null;
+  manager: { id: string; name: string } | null;
+  supplier: { id: string; name: string } | null;
   isStarted: boolean;
   isFinished: boolean;
+  client: string | null;
+  specsReceived: boolean;
+  specNotRequired?: boolean;
+  boqReceived?: boolean;
+  boqNotRequired?: boolean;
+  finishingSchedule: string | null;
+  safetyFile: boolean;
+  safetyFileNotRequired?: boolean;
   createdAt: Date;
-  manager: {
-    id: string;
-    name: string;
-    phone: string | null;
-    email: string | null;
-  } | null;
-  supplier: {
-    id: string;
-    name: string;
-  } | null;
-  jobProducts: Array<{
-    id: string;
-    required: boolean;
-    quantity: number | null;
-    unit: string | null;
-    // productType removed
-  }>;
+
+  // ✅ only this new field
+  materialCost?: number;
 };
 
-export function JobsDataTable({ jobs }: { jobs: Job[] }) {
-  "use no memo";
-  const router = useRouter();
+import { type SortingState } from "@tanstack/react-table";
+import {
+  type ColumnFiltersState,
+  type VisibilityState,
+} from "@tanstack/react-table";
+import { formatCurrency } from "@/lib/formatCurrency";
+
+export default function JobsDataTable({ jobs }: { jobs: JobRow[] }) {
+  const tableRef = useRef<Table<JobRow> | null>(null);
+  const [columnsDropdownOpen, setColumnsDropdownOpen] = useState(false);
+  const storageKey = "jobs-table";
+  const lockColumns = ["actions"];
+  const columnAllowList = useMemo(
+    () => [
+      "jobNumber",
+      "siteName",
+      "manager",
+      "supplier",
+      "status",
+      "client",
+      "specsReceived",
+      "finishingSchedule",
+      "safetyFile",
+
+      // ✅ add
+      "materialCost",
+    ],
+    [],
+  );
+
+  const [search, setSearch] = useState("");
+  const [editJobId, setEditJobId] = useState<string | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [jobId, setJobId] = useState<string | undefined>(undefined);
+  const [managerId, setManagerId] = useState<string | undefined>(undefined);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [globalFilter, setGlobalFilter] = useState("");
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [jobToDelete, setJobToDelete] = useState<{
     id: string;
@@ -83,12 +109,28 @@ export function JobsDataTable({ jobs }: { jobs: Job[] }) {
   } | null>(null);
   const [processingJobId, setProcessingJobId] = useState<string | null>(null);
 
+  const filteredJobs = useMemo(() => {
+    let filtered = jobs;
+    if (managerId && managerId !== "") {
+      filtered = filtered.filter((j) => j.manager?.id === managerId);
+    }
+    const q = search.trim().toLowerCase();
+    if (!q) return filtered;
+    return filtered.filter((j) => {
+      if (j.jobNumber?.toLowerCase().includes(q)) return true;
+      if (j.siteName?.toLowerCase().includes(q)) return true;
+      if (j.manager?.name?.toLowerCase().includes(q)) return true;
+      if (j.supplier?.name?.toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }, [jobs, managerId, search]);
+
   const handleMarkAsStarted = async (jobId: string) => {
     setProcessingJobId(jobId);
     try {
       const result = await markJobAsStarted(jobId);
       if (result.success) {
-        router.refresh();
+        toast.success("Job marked as started");
       }
     } catch (error) {
       console.error("Failed to mark job as started:", error);
@@ -102,7 +144,7 @@ export function JobsDataTable({ jobs }: { jobs: Job[] }) {
     try {
       const result = await markJobAsFinished(jobId);
       if (result.success) {
-        router.refresh();
+        toast.success("Job marked as finished");
       }
     } catch (error) {
       console.error("Failed to mark job as finished:", error);
@@ -113,171 +155,213 @@ export function JobsDataTable({ jobs }: { jobs: Job[] }) {
 
   const data = useMemo(() => jobs, [jobs]);
 
-  const columns: ColumnDef<Job>[] = useMemo(
+  const columns = useMemo<ColumnDef<JobRow>[]>(
     () => [
       {
         accessorKey: "jobNumber",
-        header: ({ column }) => {
-          return (
-            <Button
-              variant="ghost"
-              onClick={() =>
-                column.toggleSorting(column.getIsSorted() === "asc")
-              }
-              className="hover:bg-accent/50 -ml-4"
-            >
-              Job Number
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          );
-        },
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Job Number
+          </span>
+        ),
         cell: ({ row }) => (
-          <div className="font-mono font-black text-primary text-lg leading-2">
-            {row.getValue("jobNumber")}
-          </div>
+          <span
+            className="font-mono text-sm font-medium text-teal-600 tracking-widest max-w-[60px] truncate"
+            title={row.original.jobNumber}
+          >
+            {row.original.jobNumber}
+          </span>
         ),
       },
       {
         accessorKey: "siteName",
-        header: ({ column }) => {
-          return (
-            <Button
-              variant="ghost"
-              onClick={() =>
-                column.toggleSorting(column.getIsSorted() === "asc")
-              }
-              className="hover:bg-accent/50 -ml-4"
-            >
-              Site Name
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          );
-        },
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Site Name
+          </span>
+        ),
         cell: ({ row }) => (
-          <div className="font-medium text-foreground uppercase">
-            {row.getValue("siteName")}
-          </div>
+          <span
+            className="block max-w-[360px] truncate text-muted-foreground"
+            title={row.original.siteName}
+          >
+            {row.original.siteName}
+          </span>
         ),
       },
       {
-        id: "status",
-        header: "Status",
+        accessorKey: "manager",
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Manager
+          </span>
+        ),
+        cell: ({ row }) => (
+          <span className="capitalize text-teal-600">
+            {row.original.manager?.name ?? "Missing"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Status
+          </span>
+        ),
         cell: ({ row }) => {
-          const job = row.original;
-          if (job.isFinished) {
-            return (
-              <Badge
-                variant="default"
-                className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-              >
-                <CheckCircle2 className="mr-1 h-3 w-3" />
-                Finished
-              </Badge>
-            );
-          } else if (job.isStarted) {
-            return (
-              <Badge
-                variant="default"
-                className="bg-blue-500/10 text-blue-400 border-blue-500/20"
-              >
-                <Clock className="mr-1 h-3 w-3" />
-                Ongoing
-              </Badge>
-            );
+          if (row.original.isFinished)
+            return <span className="text-emerald-400">Finished</span>;
+          if (row.original.isStarted)
+            return <span className="text-blue-400">Ongoing</span>;
+          return <span className="text-slate-400">Not started</span>;
+        },
+      },
+      {
+        accessorKey: "supplier",
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Supplier
+          </span>
+        ),
+        cell: ({ row }) => (
+          <span className="text-orange-600">
+            {row.original.supplier?.name ?? "Missing"}
+          </span>
+        ),
+      },
+
+      {
+        accessorKey: "client",
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Client
+          </span>
+        ),
+        cell: ({ row }) => (
+          <span className="text-muted-foreground">
+            {row.original.client ?? "Missing"}
+          </span>
+        ),
+      },
+
+      {
+        accessorKey: "specsReceived",
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Spec
+          </span>
+        ),
+        cell: ({ row }) => {
+          if (row.original.specNotRequired) {
+            return <span className="text-muted-foreground">Not Required</span>;
           }
-          return null;
+          return (
+            <span className="text-muted-foreground">
+              {row.original.specsReceived ? (
+                "Received"
+              ) : (
+                <span className="text-destructive/40">Missing</span>
+              )}
+            </span>
+          );
         },
       },
+
       {
-        accessorKey: "manager?.name",
-        header: "Manager",
+        accessorKey: "safetyFile",
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Safety File
+          </span>
+        ),
         cell: ({ row }) => {
-          const manager = row.original.manager;
+          if (row.original.safetyFileNotRequired) {
+            return <span className="text-muted-foreground">Not Required</span>;
+          }
           return (
-            <div>
-              <div className="font-medium capitalize text-orange-600">
-                {manager?.name}
-              </div>
-              {manager?.email && (
-                <div className="text-xs text-muted-foreground lowercase">
-                  {manager?.email}
-                </div>
+            <span className="text-muted-foreground">
+              {row.original.safetyFile ? (
+                "Received"
+              ) : (
+                <span className="text-destructive/40">Missing</span>
               )}
-            </div>
+            </span>
           );
         },
       },
       {
-        accessorFn: (row) => (row.supplier ? row.supplier.name : ""),
-        id: "supplierName", // Change this from "supplier.name" to "supplierName"
-        header: "Supplier",
+        accessorKey: "boqReceived",
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            BOQ
+          </span>
+        ),
+        cell: ({ row }) => {
+          if (row.original.boqNotRequired) {
+            return <span className="text-muted-foreground">Not Required</span>;
+          }
+          return (
+            <span className="text-muted-foreground">
+              {row.original.boqReceived ? (
+                "Received"
+              ) : (
+                <span className="text-destructive/40">Missing</span>
+              )}
+            </span>
+          );
+        },
+      },
+
+      {
+        accessorKey: "materialCost",
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Material Cost
+          </span>
+        ),
         cell: ({ row }) => (
-          <Badge variant="secondary" className="font-medium">
-            {row?.original?.supplier?.name ?? ""}
-          </Badge>
+          <span className="text-muted-foreground">
+            {formatCurrency(row.original.materialCost ?? 0)}
+          </span>
         ),
       },
+
       {
-        accessorKey: "Products",
-        header: "Products",
-        cell: ({ row }) => {
-          const jobProducts = row.original.jobProducts;
-          return (
-            <div className="flex flex-wrap gap-1">
-              {jobProducts?.length > 0 ? (
-                <Badge variant="outline" className="text-xs">
-                  {jobProducts?.length}
-                </Badge>
-              ) : (
-                <span className="text-sm text-muted-foreground">
-                  No products
-                </span>
-              )}
-            </div>
-          );
-        },
+        accessorKey: "finishingSchedule",
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Finishing Schedule
+          </span>
+        ),
+        cell: ({ row }) => (
+          <span className="text-muted-foreground">
+            {row.original.finishingSchedule ?? (
+              <span className="text-destructive/40">Missing</span>
+            )}
+          </span>
+        ),
       },
-      {
-        accessorKey: "createdAt",
-        header: ({ column }) => {
-          return (
-            <Button
-              variant="ghost"
-              onClick={() =>
-                column.toggleSorting(column.getIsSorted() === "asc")
-              }
-              className="hover:bg-accent/50 -ml-4"
-            >
-              Created
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          );
-        },
-        cell: ({ row }) => {
-          const date = new Date(row.getValue("createdAt"));
-          return (
-            <div className="text-sm text-muted-foreground">
-              {date.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </div>
-          );
-        },
-      },
+
       {
         id: "actions",
-        enableHiding: false,
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Actions
+          </span>
+        ),
         cell: ({ row }) => {
           const job = row.original;
 
           return (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
+                <Button
+                  variant="default"
+                  className="h-8 w-8 p-0 bg-green-700 hover:bg-green-700/70 border-0"
+                >
                   <span className="sr-only">Open menu</span>
-                  <MoreHorizontal className="h-4 w-4" />
+                  <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -349,44 +433,145 @@ export function JobsDataTable({ jobs }: { jobs: Job[] }) {
     [],
   );
 
+  const canReset =
+    typeof window !== "undefined" && !!window.localStorage.getItem(storageKey);
+
+  // Manager options for combobox
+  const managerOptions = useMemo(() => {
+    const uniqueManagers = Array.from(
+      new Map(
+        jobs.filter((j) => j.manager).map((j) => [j.manager!.id, j.manager!]),
+      ).values(),
+    );
+    return uniqueManagers.map((m) => ({ label: m.name, value: m.id }));
+  }, [jobs]);
+
   return (
-    <>
-      <DataTable<Job>
-        data={data}
-        columns={columns as ColumnDef<Job, any>[]}
-        storageKey="jobs-table"
-      />
+    <div className="space-y-4">
+      {/* Header Controls */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* left side */}
+        <div className="flex-1">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search jobs..."
+            className=""
+          />
+        </div>
+        {/* center side */}
 
-      <ViewJobDialog
-        jobId={selectedJobId}
-        open={viewDialogOpen}
-        onOpenChange={setViewDialogOpen}
-      />
+        <div className="flex-1">
+          {" "}
+          <ManagerCombobox
+            value={managerId}
+            onChange={setManagerId}
+            options={managerOptions}
+          />
+        </div>
 
+        {/* right side */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="relative">
+            <button
+              onClick={() => setColumnsDropdownOpen(!columnsDropdownOpen)}
+              className="inline-flex items-center justify-center gap-1 sm:gap-2 rounded border border-slate-700 bg-transparent px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-slate-100 hover:bg-slate-800 transition-colors"
+              type="button"
+            >
+              <Columns3 className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="">Columns</span>
+              <ChevronDown className="h-3 w-3 sm:h-4 sm:w-4" />
+            </button>
+            {columnsDropdownOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setColumnsDropdownOpen(false)}
+                />
+                <div className="absolute md:right-0 top-full mt-2 w-48 sm:w-56 z-50 rounded border border-slate-700 bg-slate-900 shadow-lg">
+                  <div className="p-2">
+                    <div className="px-2 py-1.5 text-xs sm:text-sm font-semibold text-slate-100">
+                      Show / Hide columns
+                    </div>
+                    <div className="my-1 h-px bg-slate-700" />
+                    <div className="max-h-[60vh] overflow-y-auto">
+                      {(tableRef.current?.getAllLeafColumns?.() ?? [])
+                        .filter((c: any) => c.getCanHide?.() !== false)
+                        .filter((c: any) =>
+                          columnAllowList.includes(String(c.id)),
+                        )
+                        .map((col: any) => {
+                          const isLocked = lockColumns.includes(col.id);
+                          return (
+                            <label
+                              key={col.id}
+                              className={`flex items-center gap-2 px-2 py-1.5 text-xs sm:text-sm rounded hover:bg-slate-800 cursor-pointer ${isLocked ? "opacity-50 cursor-not-allowed" : ""}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={col.getIsVisible()}
+                                disabled={isLocked}
+                                onChange={(e) => {
+                                  if (!isLocked)
+                                    col.toggleVisibility(e.target.checked);
+                                }}
+                                className="h-4 w-4 rounded border-slate-600 bg-slate-800 text-sky-600"
+                              />
+                              <span className="truncate capitalize text-slate-200">
+                                {col.id}
+                              </span>
+                            </label>
+                          );
+                        })}
+                    </div>
+                    <div className="my-1 h-px bg-slate-700" />
+                    <button
+                      disabled={!canReset}
+                      onClick={() => {
+                        if (typeof window === "undefined") return;
+                        window.localStorage.removeItem(storageKey);
+                        tableRef.current?.setColumnVisibility?.({});
+                      }}
+                      className="w-full px-2 py-1.5 text-xs sm:text-sm text-left text-slate-200 hover:bg-slate-800 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                      type="button"
+                    >
+                      Reset to default
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+          <SyncJobsButton />
+          <div className="">
+            <CreateJobDialog />
+          </div>
+        </div>
+      </div>
+      {/* Table */}
+      <div className="overflow-hidden">
+        <DataTable<JobRow>
+          data={filteredJobs}
+          columns={columns}
+          storageKey={storageKey}
+          tableRef={tableRef}
+          showColumnToggle={false}
+          lockColumns={lockColumns}
+          pageSizeOptions={[5, 10, 20, 50, 100]}
+        />
+      </div>
       <EditJobDialog
-        jobId={selectedJobId}
+        jobId={editJobId}
         open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
-        onSuccess={() => {
-          window.location.reload();
-        }}
-      />
-
-      <DeleteJobDialog
-        jobId={jobToDelete?.id ?? null}
-        jobNumber={jobToDelete?.jobNumber}
-        siteName={jobToDelete?.siteName}
-        open={deleteDialogOpen}
         onOpenChange={(open) => {
-          setDeleteDialogOpen(open);
-          if (!open) {
-            setJobToDelete(null);
-          }
+          setEditDialogOpen(open);
+          if (!open) setEditJobId(null);
         }}
         onSuccess={() => {
-          window.location.reload();
+          setEditDialogOpen(false);
+          setEditJobId(null);
         }}
       />
-    </>
+    </div>
   );
 }

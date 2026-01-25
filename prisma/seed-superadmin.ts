@@ -1,5 +1,5 @@
-const { hash } = require("bcryptjs");
-const { prisma } = require("../lib/prisma");
+import { hash } from "bcryptjs";
+import { prisma } from "../lib/prisma";
 
 async function seedSuperAdmin() {
   const email = "admin@cautiousndlovu.co.za";
@@ -23,7 +23,13 @@ async function seedSuperAdmin() {
   } else {
     console.log("Super admin already exists");
   }
-  process.exit(0);
 }
 
-seedSuperAdmin();
+seedSuperAdmin()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

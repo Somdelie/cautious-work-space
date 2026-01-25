@@ -142,7 +142,24 @@ export function EditProductDialog({
           return;
         }
 
-        const p: Product = res.data;
+        // Convert all variant.price from Decimal to number
+        const p = {
+          ...res.data,
+          supplierProducts: (res.data.supplierProducts ?? []).map(
+            (sp: any) => ({
+              ...sp,
+              variants: (sp.variants ?? []).map((v: any) => ({
+                ...v,
+                price:
+                  typeof v.price === "object" &&
+                  v.price !== null &&
+                  typeof v.price.toNumber === "function"
+                    ? v.price.toNumber()
+                    : v.price,
+              })),
+            }),
+          ),
+        };
 
         setName(p.name ?? "");
         setShortcut(p.shortcut ?? "");
@@ -267,20 +284,86 @@ export function EditProductDialog({
         return;
       }
 
-      const saved: Variant = res.data;
+      // Convert price to number if needed
+      const saved = {
+        ...res.data,
+        price:
+          typeof res.data.price === "object" &&
+          res.data.price !== null &&
+          typeof res.data.price.toNumber === "function"
+            ? res.data.price.toNumber()
+            : res.data.price,
+      };
 
       setSupplierProducts((prev) =>
         prev.map((sp) => {
-          if (sp.supplierId !== payload.supplierId) return sp;
-
-          const exists = sp.variants.find((v) => v.id === saved.id);
-          if (exists) {
+          if (sp.supplierId !== payload.supplierId) {
+            // Ensure all prices are numbers in other suppliers too
             return {
               ...sp,
-              variants: sp.variants.map((v) => (v.id === saved.id ? saved : v)),
+              variants: sp.variants.map((v) => ({
+                ...v,
+                price:
+                  typeof v.price === "object" &&
+                  v.price !== null &&
+                  typeof (v.price as any).toNumber === "function"
+                    ? (v.price as any).toNumber()
+                    : (v.price as number),
+              })) as Variant[],
             };
           }
-          return { ...sp, variants: [saved, ...sp.variants] };
+          // For the supplier being updated, update or add the variant, and ensure all prices are numbers
+          const updatedVariants = (() => {
+            const found = sp.variants.find((v) => v.id === saved.id);
+            if (found) {
+              return sp.variants.map((v) =>
+                v.id === saved.id
+                  ? {
+                      ...saved,
+                      price:
+                        typeof saved.price === "object" &&
+                        saved.price !== null &&
+                        typeof (saved.price as any).toNumber === "function"
+                          ? (saved.price as any).toNumber()
+                          : (saved.price as number),
+                    }
+                  : {
+                      ...v,
+                      price:
+                        typeof v.price === "object" &&
+                        v.price !== null &&
+                        typeof (v.price as any).toNumber === "function"
+                          ? (v.price as any).toNumber()
+                          : (v.price as number),
+                    },
+              );
+            } else {
+              return [
+                {
+                  ...saved,
+                  price:
+                    typeof saved.price === "object" &&
+                    saved.price !== null &&
+                    typeof (saved.price as any).toNumber === "function"
+                      ? (saved.price as any).toNumber()
+                      : (saved.price as number),
+                },
+                ...sp.variants.map((v) => ({
+                  ...v,
+                  price:
+                    typeof v.price === "object" &&
+                    v.price !== null &&
+                    typeof (v.price as any).toNumber === "function"
+                      ? (v.price as any).toNumber()
+                      : (v.price as number),
+                })),
+              ];
+            }
+          })();
+          return {
+            ...sp,
+            variants: updatedVariants as Variant[],
+          };
         }),
       );
 
@@ -327,7 +410,10 @@ export function EditProductDialog({
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <form onSubmit={handleSaveProduct} className="space-y-6">
+          <form
+            onSubmit={handleSaveProduct}
+            className="space-y-6 max-h-[70vh] overflow-y-auto pr-2"
+          >
             {/* Product core */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">

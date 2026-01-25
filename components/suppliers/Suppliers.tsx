@@ -6,11 +6,16 @@ import { CreateSupplierDialog } from "@/components/dialogs/create-supplier";
 import { EditSupplierDialog } from "@/components/dialogs/edit-supplier";
 import { DeleteSupplierDialog } from "@/components/dialogs/delete-supplier";
 import { Button } from "@/components/ui/button";
-import { Card, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Pencil, Trash, Package, Briefcase } from "lucide-react";
 import Image from "next/image";
 
-type Supplier = any;
+type Supplier = {
+  id: string;
+  name: string;
+  logoUrl: string | null;
+  jobsCount: number;
+};
 
 export default function SuppliersClient({
   initialSuppliers,
@@ -38,7 +43,7 @@ export default function SuppliersClient({
   };
 
   return (
-    <div className="max-h-[90vh] bg-slate-950/40 overflow-y-auto">
+    <div className="max-h-[90vh] overflow-y-auto">
       <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
@@ -52,7 +57,10 @@ export default function SuppliersClient({
             </p>
           </div>
 
-          <CreateSupplierDialog onSuccess={refreshSuppliers} />
+          <div className="">
+            {" "}
+            <CreateSupplierDialog onSuccess={refreshSuppliers} />
+          </div>
         </div>
 
         {/* Empty state */}
@@ -69,57 +77,57 @@ export default function SuppliersClient({
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {suppliersData.map((supplier) => (
               <Card
                 key={supplier.id}
-                className="bg-slate-900 border border-slate-800 hover:border-slate-700 transition"
+                className=" gap-0 py-0 transition-all duration-200 overflow-hidden border"
               >
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between mb-3">
-                    {supplier.logoUrl ? (
-                      <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-slate-700">
-                        <Image
-                          src={supplier.logoUrl}
-                          alt={supplier.name}
-                          fill
-                          className="object-contain p-1"
-                        />
-                      </div>
-                    ) : (
-                      <div className="rounded-lg bg-primary/10 p-2.5">
-                        <Briefcase className="w-5 h-5 text-primary" />
-                      </div>
-                    )}
+                {/* Image Header */}
+                <div className="relative h-32 bg-sky-900 overflow-hidden">
+                  {supplier.logoUrl ? (
+                    <Image
+                      width={200}
+                      height={200}
+                      src={supplier.logoUrl}
+                      alt={supplier.name}
+                      className="w-full h-full object-contain p-3"
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center w-full h-full bg-slate-800">
+                      <Briefcase className="w-8 h-8 text-slate-400" />
+                    </div>
+                  )}
+                </div>
 
-                    <span className="text-xs text-slate-400">
-                      {supplier.jobs.length} jobs
-                    </span>
-                  </div>
-
-                  <CardTitle className="text-lg font-semibold text-white">
+                {/* Content */}
+                <div className="p-3 flex items-center justify-between">
+                  <h3 className="font-semibold text-sm text-muted-foreground truncate mb-2">
                     {supplier.name}
-                  </CardTitle>
-                </CardContent>
+                  </h3>
+                  <span className="inline-block text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                    {supplier.jobsCount}{" "}
+                    {supplier.jobsCount === 1 ? "job" : "jobs"}
+                  </span>
+                </div>
 
-                <CardFooter className="flex gap-2 p-3 pt-0">
+                {/* Actions */}
+                <div className="flex gap-2 p-3 pt-0">
                   <Button
                     size="sm"
-                    variant="outline"
-                    className="flex-1"
+                    className="flex-1 h-8 text-xs"
                     onClick={() => {
                       setSelectedSupplierId(supplier.id);
                       setEditDialogOpen(true);
                     }}
                   >
-                    <Pencil className="w-4 h-4 mr-1" />
+                    <Pencil className="w-3.5 h-3.5 mr-1" />
                     Edit
                   </Button>
-
                   <Button
                     size="sm"
-                    variant="outline"
-                    className="text-red-400 hover:bg-red-950/40"
+                    variant="ghost"
+                    className="h-8 px-2 text-red-500 hover:bg-red-50 hover:text-red-600"
                     onClick={() => {
                       setSupplierToDelete({
                         id: supplier.id,
@@ -128,9 +136,9 @@ export default function SuppliersClient({
                       setDeleteDialogOpen(true);
                     }}
                   >
-                    <Trash className="w-4 h-4" />
+                    <Trash className="w-3.5 h-3.5" />
                   </Button>
-                </CardFooter>
+                </div>
               </Card>
             ))}
           </div>

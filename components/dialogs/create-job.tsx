@@ -198,17 +198,17 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2">
+        <Button className="gap-2 w-full rounded-none">
           <Plus className="h-4 w-4" />
-          Create Job
+          Add New Job
         </Button>
       </DialogTrigger>
 
       <DialogContent className="sm:max-w-[620px]">
         <DialogHeader>
-          <DialogTitle>Create New Job</DialogTitle>
+          <DialogTitle>Add New Job</DialogTitle>
           <DialogDescription>
-            Create a job. You can link a manager and supplier now, then add
+            Add a job. You can link a manager and supplier now, then add
             orders/products later.
           </DialogDescription>
         </DialogHeader>
@@ -330,7 +330,7 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
             <Label>Attachments (PDF)</Label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {/* Spec */}
-              <div className="border border-slate-800 rounded-md p-3 space-y-2 bg-slate-950/30">
+              <div className="border border-slate-800 rounded p-3 space-y-2 bg-slate-950/30">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-slate-300" />
@@ -360,7 +360,7 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
                     {specFileName || "spec.pdf"}
                   </p>
                 ) : (
-                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded-md py-6 cursor-pointer hover:border-slate-700 transition-colors">
+                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded py-6 cursor-pointer hover:border-slate-700 transition-colors">
                     <Upload className="h-5 w-5 text-slate-400 mb-2" />
                     <span className="text-sm text-slate-300">
                       Upload Spec PDF
@@ -396,7 +396,7 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
               </div>
 
               {/* BOQ */}
-              <div className="border border-slate-800 rounded-md p-3 space-y-2 bg-slate-950/30">
+              <div className="border border-slate-800 rounded p-3 space-y-2 bg-slate-950/30">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-slate-300" />
@@ -426,7 +426,7 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
                     {boqFileName || "boq.pdf"}
                   </p>
                 ) : (
-                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded-md py-6 cursor-pointer hover:border-slate-700 transition-colors">
+                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded py-6 cursor-pointer hover:border-slate-700 transition-colors">
                     <Upload className="h-5 w-5 text-slate-400 mb-2" />
                     <span className="text-sm text-slate-300">
                       Upload BOQ PDF

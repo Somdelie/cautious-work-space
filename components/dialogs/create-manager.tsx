@@ -57,7 +57,7 @@ export function CreateManagerDialog({ onSuccess }: CreateManagerDialogProps) {
       }
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "An unexpected error occurred"
+        error instanceof Error ? error.message : "An unexpected error occurred",
       );
     } finally {
       setLoading(false);
@@ -67,19 +67,19 @@ export function CreateManagerDialog({ onSuccess }: CreateManagerDialogProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2">
+        <Button className="gap-2 rounded-none w-full">
           <Plus className="h-4 w-4" />
-          Add Manager
+          Add New Supervisor
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Create New Manager</DialogTitle>
-          <DialogDescription>Add a new manager</DialogDescription>
+          <DialogTitle>Add New Supervisor</DialogTitle>
+          <DialogDescription>Add a new supervisor</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="manager-name">Manager Name *</Label>
+            <Label htmlFor="manager-name">Supervisor Name *</Label>
             <Input
               id="manager-name"
               placeholder="e.g., John Doe"

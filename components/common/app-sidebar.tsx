@@ -17,11 +17,14 @@ import {
   DashboardIcon,
   BuildingIcon,
   PackageIcon,
-  UsersIcon,
+  SupervisorsIcon,
   BriefcaseIcon,
+  EmployeesIcon,
 } from "@/components/icons/folder-icons";
 
 import { useSession } from "next-auth/react";
+
+import { FolderIcon } from "@/components/icons/folder-icons";
 
 const sidebarLinks = [
   { id: "dashboard", title: "Dashboard", href: "/", icon: DashboardIcon },
@@ -33,12 +36,18 @@ const sidebarLinks = [
   },
   {
     id: "products",
-    title: "Product Types",
+    title: "Products",
     href: "/products",
     icon: PackageIcon,
   },
-  { id: "managers", title: "Managers", href: "/managers", icon: UsersIcon },
+  {
+    id: "supervisors",
+    title: "Supervisors",
+    href: "/managers",
+    icon: SupervisorsIcon,
+  },
   { id: "jobs", title: "Jobs", href: "/jobs", icon: BriefcaseIcon },
+  { id: "orders", title: "Orders", href: "/orders", icon: FolderIcon },
 ];
 
 export function AppSidebar() {
@@ -50,17 +59,25 @@ export function AppSidebar() {
     ...sidebarLinks,
     // Only show Users link for superadmin
     ...(session?.user && (session.user as any).role === "superadmin"
-      ? [{ id: "users", title: "Users", href: "/users", icon: UsersIcon }]
+      ? [
+          {
+            id: "users",
+            title: "Employees",
+            href: "/users",
+            icon: EmployeesIcon,
+          },
+        ]
       : []),
   ];
 
   return (
-    <Sidebar className="border-r border-gray-800">
-      <SidebarHeader className="border-b border-gray-800 px-6 h-[60px] flex justify-center">
-        <h2 className="text-lg font-semibold uppercase flex items-center gap-2 text-primary italic">
-          <Image src="/logo.svg" alt="logo" width={38} height={20} />
-          BOQ Guard
-        </h2>
+    <Sidebar className="border-r dark:dark:border-gray-800 bg-card w-64">
+      <SidebarHeader className="border-b bg-gray-100 border-gray-500 px-6 h-[60px] flex justify-center">
+        <img
+          src="/FirstClass_Logo.png"
+          alt="Cautious Logo"
+          className="h-12 w-44 my-2"
+        />
       </SidebarHeader>
 
       <SidebarContent className="py-4">
@@ -78,8 +95,8 @@ export function AppSidebar() {
                     asChild
                     className={`w-full group relative h-10 px-4 rounded transition-all duration-200 ${
                       isActive
-                        ? "bg-primary text-white"
-                        : "hover:bg-gray-800/50 text-gray-300"
+                        ? "bg-primary text-white hover:bg-primary"
+                        : "hover:bg-gray-800/50 text-muted-foreground border-b"
                     }`}
                   >
                     <Link
@@ -91,7 +108,7 @@ export function AppSidebar() {
                       </div>
                       <span
                         className={`text-base font-medium ${
-                          isActive ? "text-white" : "group-hover:text-white"
+                          isActive ? "text-white" : ""
                         }`}
                       >
                         {link.title}
@@ -105,7 +122,7 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-gray-800 p-3">
+      <SidebarFooter className="border-t dark:border-gray-800 p-3">
         <div className="flex items-center gap-3 px-4 py-3 rounded bg-gray-800/50 hover:bg-gray-800 transition-colors cursor-pointer">
           <div className="flex-1 min-w-0 flex items-center gap-3">
             <p className="text-sm font-medium text-white truncate">

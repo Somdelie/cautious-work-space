@@ -34,14 +34,16 @@ export function AppUserButton() {
         <Button
           variant="ghost"
           size="icon"
-          className="w-8 h-8 rounded-full p-0"
+          className="rounded-full p-0 text-slate-800 dark:text-white"
         >
-          <Avatar>
+          <Avatar className="bg-teal-700">
             <AvatarImage
               src={user?.image || undefined}
               alt={user?.name || "User"}
             />
-            <AvatarFallback>{user?.name?.[0] || "U"}</AvatarFallback>
+            <AvatarFallback className="text-white bg-teal-500">
+              {user?.name?.slice(0, 2).toUpperCase() || "U"}
+            </AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>

@@ -179,9 +179,9 @@ export function CreateProductDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button className="gap-2">
+        <Button className="gap-2 rounded-none w-full">
           <Plus className="h-4 w-4" />
-          Add Product
+          Add New Product
         </Button>
       </DialogTrigger>
 

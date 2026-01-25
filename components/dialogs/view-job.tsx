@@ -31,10 +31,10 @@ import {
 } from "lucide-react";
 import { getJobById } from "@/actions/job";
 import { generateJobOrderPDF } from "@/actions/pdf-export";
-import { CreateOrder } from "./create-order";
 import { OrdersTable } from "@/components/orders/orders-table";
 import { toast } from "sonner";
 import { Download } from "lucide-react";
+import { CreateOrderDialog } from "./create-order";
 
 interface ViewJobDialogProps {
   jobId: string | null;
@@ -649,11 +649,11 @@ export function ViewJobDialog({
                       {job.orders.length === 1 ? "order" : "orders"}
                     </span>
                   </h3>
-                  <CreateOrder
+                  {/* <CreateOrderDialog
                     jobId={job.id}
                     jobNumber={job.jobNumber}
                     onOrderCreated={fetchJob}
-                  />
+                  /> */}
                 </div>
                 <OrdersTable orders={job.orders} onOrderDeleted={fetchJob} />
               </div>

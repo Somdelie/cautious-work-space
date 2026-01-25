@@ -113,7 +113,7 @@ export function CreateSupplierDialog({
       onSuccess?.();
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "An unexpected error occurred"
+        error instanceof Error ? error.message : "An unexpected error occurred",
       );
     } finally {
       setLoading(false);
@@ -131,7 +131,7 @@ export function CreateSupplierDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button className="gap-2">
+        <Button className="gap-2 rounded-none w-full">
           <Plus className="size-4" /> Add New Supplier
         </Button>
       </DialogTrigger>
@@ -156,7 +156,7 @@ export function CreateSupplierDialog({
               <p className="font-semibold text-red-800 mb-2">
                 Upload Error Details:
               </p>
-              <pre className="text-red-700 whitespace-pre-wrap break-words text-xs max-h-32 overflow-y-auto font-mono">
+              <pre className="text-red-700 whitespace-pre-wrap wrap-break-word text-xs max-h-32 overflow-y-auto font-mono">
                 {uploadError}
               </pre>
             </div>

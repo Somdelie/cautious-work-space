@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
-import { type ColumnDef } from "@tanstack/react-table";
+import { useMemo, useState, useEffect, useRef } from "react";
+import { type ColumnDef, type Table } from "@tanstack/react-table";
 import { DataTable } from "@/components/ui/data-table";
 import { formatCurrency } from "@/lib/formatCurrency";
 import {
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { CreateProductDialog } from "../dialogs/create-product";
+import { ChevronDown, Columns3 } from "lucide-react";
 
 type UsageType = "INTERNAL" | "EXTERNAL" | "BOTH";
 type MeasureUnit = "L" | "KG" | "EA";
@@ -73,8 +74,7 @@ function usageBadgeStyle(t: UsageType) {
 }
 
 function keyToString(k: VariantKey) {
-  const size = Number.isInteger(k.size) ? String(k.size) : String(k.size);
-  return `${size}${k.unit}`; // 20L, 5L, 25KG
+  return `${k.size}${k.unit}`;
 }
 
 function sortVariantKeys(a: VariantKey, b: VariantKey) {
@@ -100,7 +100,6 @@ function buildVariantKeysForSupplier(
     for (const v of sp.variants || []) {
       if (!v.isActive) continue;
       if (typeof v.price !== "number") continue;
-
       map.set(`${v.size}_${v.unit}`, { size: v.size, unit: v.unit });
     }
   }
@@ -122,7 +121,14 @@ function findPrice(row: ProductRow, supplierId: string, k: VariantKey) {
   return typeof v.price === "number" && v.price > 0 ? v.price : null;
 }
 
-// ---------- component ----------
+function productColumnLabel(col: any) {
+  if (col.id === "shortcut") return "Shortcut";
+  if (col.id === "name") return "Product";
+  if (col.id === "usageType") return "Usage";
+  if (col.id === "actions") return "Actions";
+  return String(col.id ?? "Column");
+}
+
 export default function ProductsTable({
   products,
   suppliers: allSuppliers,
@@ -132,37 +138,38 @@ export default function ProductsTable({
 }) {
   const suppliers = useMemo(() => allSuppliers, [allSuppliers]);
 
-  console.log(suppliers, "These are suppliers!");
+  // Column dropdown moved here
+  const tableRef = useRef<Table<ProductRow> | null>(null);
+  const [columnsDropdownOpen, setColumnsDropdownOpen] = useState(false);
 
-  // Set default supplierId to Plascon if available
+  // ✅ only these appear in dropdown
+  const columnAllowList = useMemo(() => ["shortcut", "name", "usageType"], []);
+  const lockColumns = ["actions"];
+  const storageKey = "products-table";
+
+  // default supplier
   const defaultSupplierId = useMemo(() => {
     const plascon = suppliers.find((s) => s.name.toLowerCase() === "plascon");
     return plascon ? plascon.id : suppliers[0]?.id || "";
   }, [suppliers]);
 
-  // Set supplierId to defaultSupplierId only on first mount
   const [supplierId, setSupplierId] = useState<string>(() => defaultSupplierId);
+  const [search, setSearch] = useState("");
 
-  // Single useEffect to keep supplierId valid and set Plascon as default if suppliers change
   useEffect(() => {
-    if (Array.isArray(suppliers) && suppliers?.length > 0) {
-      // If supplierId is not in the list, set to Plascon or first supplier
-      if (!suppliers?.some((s) => s.id === supplierId)) {
+    if (Array.isArray(suppliers) && suppliers.length > 0) {
+      if (!suppliers.some((s) => s.id === supplierId)) {
         setSupplierId(defaultSupplierId);
       }
     } else if (supplierId) {
-      // If suppliers is empty, clear supplierId
       setSupplierId("");
     }
   }, [suppliers, supplierId, defaultSupplierId]);
 
-  const [search, setSearch] = useState("");
-
-  // keep selected supplier valid when data loads/refetches
   useEffect(() => {
     if (!suppliers?.length) return;
     if (!supplierId) setSupplierId(suppliers[0].id);
-    const exists = suppliers?.some((s) => s.id === supplierId);
+    const exists = suppliers.some((s) => s.id === supplierId);
     if (!exists) setSupplierId(suppliers[0].id);
   }, [suppliers, supplierId]);
 
@@ -171,9 +178,7 @@ export default function ProductsTable({
     return buildVariantKeysForSupplier(products, supplierId);
   }, [products, supplierId]);
 
-  // Filter products by selected supplier and search query
   const filteredProducts = useMemo(() => {
-    // If no supplier selected, show all products
     let filtered = supplierId
       ? products.filter((p) =>
           (p.supplierProducts || []).some((sp) => sp.supplierId === supplierId),
@@ -186,7 +191,6 @@ export default function ProductsTable({
     return filtered.filter((p) => {
       if (p.name?.toLowerCase().includes(q)) return true;
       if (p.shortcut?.toLowerCase().includes(q)) return true;
-      // Search by supplier name
       if (
         (p.supplierProducts || []).some((sp) =>
           sp.supplier?.name?.toLowerCase().includes(q),
@@ -202,13 +206,13 @@ export default function ProductsTable({
       {
         accessorKey: "shortcut",
         header: () => (
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <span className="text-xs font-semibold uppercase tracking-wider ">
             Shortcut
           </span>
         ),
         cell: ({ row }) => (
           <span className="font-mono text-sm font-medium text-slate-100">
-            {row.original.shortcut || "—"}
+            {row.original.shortcut || "missing"}
           </span>
         ),
       },
@@ -257,7 +261,6 @@ export default function ProductsTable({
       cell: ({ row }) => {
         if (!supplierId) return <span className="text-slate-500">—</span>;
         const price = findPrice(row.original, supplierId, k);
-
         return price ? (
           <span className="font-semibold text-emerald-400">
             {formatCurrency(price)}
@@ -268,7 +271,6 @@ export default function ProductsTable({
       },
     }));
 
-    // Action column
     const actionCol: ColumnDef<ProductRow> = {
       id: "actions",
       header: () => (
@@ -278,16 +280,17 @@ export default function ProductsTable({
       ),
       cell: ({ row }) => (
         <div className="flex gap-2">
-          {/* Replace with your actual action buttons/components */}
           <button
             className="px-2 py-1 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-800"
             onClick={() => alert(`Edit ${row.original.name}`)}
+            type="button"
           >
             Edit
           </button>
           <button
             className="px-2 py-1 text-xs rounded bg-red-700 text-white hover:bg-red-800"
             onClick={() => alert(`Delete ${row.original.name}`)}
+            type="button"
           >
             Delete
           </button>
@@ -300,16 +303,19 @@ export default function ProductsTable({
     return [...base, ...variantCols, actionCol];
   }, [variantKeys, supplierId]);
 
+  const canReset =
+    typeof window !== "undefined" && !!window.localStorage.getItem(storageKey);
+
   return (
     <div className="space-y-4">
       {/* Header Controls */}
-      <div className="rounded border border-slate-800 bg-slate-950/40 p-4">
+      <div className="">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {/* Left controls */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
             <div className="w-[260px]">
               <Select value={supplierId} onValueChange={setSupplierId}>
-                <SelectTrigger className="bg-slate-900 border-slate-800">
+                <SelectTrigger className="text-muted-foreground">
                   <SelectValue placeholder="Select supplier..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -322,9 +328,9 @@ export default function ProductsTable({
               </Select>
             </div>
 
-            <span className="hidden md:block text-xs text-slate-400">
+            {/* <span className="hidden md:block text-xs text-slate-400">
               Showing prices for selected supplier
-            </span>
+            </span> */}
           </div>
 
           {/* Right controls */}
@@ -334,21 +340,110 @@ export default function ProductsTable({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search products..."
-                className="bg-slate-900 border-slate-800"
+                className=""
               />
             </div>
 
-            <CreateProductDialog />
+            {/* Columns dropdown (ONLY main columns) */}
+            <div className="flex items-center justify-end gap-2">
+              <div className="relative">
+                <button
+                  onClick={() => setColumnsDropdownOpen(!columnsDropdownOpen)}
+                  className="inline-flex items-center justify-center gap-1 sm:gap-2 rounded border border-slate-700 bg-transparent px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-slate-100 hover:bg-slate-800 transition-colors"
+                  type="button"
+                >
+                  <Columns3 className="h-3 w-3 sm:h-4 sm:w-4" />
+                  <span className="hidden sm:inline">Columns</span>
+                  <ChevronDown className="h-3 w-3 sm:h-4 sm:w-4" />
+                </button>
+
+                {columnsDropdownOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setColumnsDropdownOpen(false)}
+                    />
+                    <div className="absolute right-0 top-full mt-2 w-48 sm:w-56 z-50 rounded border border-slate-700 bg-slate-900 shadow-lg">
+                      <div className="p-2">
+                        <div className="px-2 py-1.5 text-xs sm:text-sm font-semibold text-slate-100">
+                          Show / Hide columns
+                        </div>
+                        <div className="my-1 h-px bg-slate-700" />
+
+                        <div className="max-h-[60vh] overflow-y-auto">
+                          {(tableRef.current?.getAllLeafColumns?.() ?? [])
+                            .filter((c: any) => c.getCanHide?.() !== false)
+                            .filter((c: any) =>
+                              columnAllowList.includes(String(c.id)),
+                            )
+                            .map((col: any) => {
+                              const isLocked = lockColumns.includes(col.id);
+                              return (
+                                <label
+                                  key={col.id}
+                                  className={`flex items-center gap-2 px-2 py-1.5 text-xs sm:text-sm rounded hover:bg-slate-800 cursor-pointer ${
+                                    isLocked
+                                      ? "opacity-50 cursor-not-allowed"
+                                      : ""
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={col.getIsVisible()}
+                                    disabled={isLocked}
+                                    onChange={(e) => {
+                                      if (!isLocked)
+                                        col.toggleVisibility(e.target.checked);
+                                    }}
+                                    className="h-4 w-4 rounded border-slate-600 bg-slate-800 text-sky-600"
+                                  />
+                                  <span className="truncate capitalize text-slate-200">
+                                    {productColumnLabel(col)}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                        </div>
+
+                        <div className="my-1 h-px bg-slate-700" />
+
+                        <button
+                          disabled={!canReset}
+                          onClick={() => {
+                            if (typeof window === "undefined") return;
+                            window.localStorage.removeItem(storageKey);
+                            tableRef.current?.setColumnVisibility?.({});
+                          }}
+                          className="w-full px-2 py-1.5 text-xs sm:text-sm text-left text-slate-200 hover:bg-slate-800 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                          type="button"
+                        >
+                          Reset to default
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="">
+              {" "}
+              <CreateProductDialog />
+            </div>
           </div>
         </div>
       </div>
 
       {/* Table */}
-      <div className="rounded bg-slate-950 overflow-hidden">
-        <DataTable
+      <div className=" overflow-hidden">
+        <DataTable<ProductRow>
           data={filteredProducts}
           columns={columns}
-          storageKey="products-table"
+          storageKey={storageKey}
+          tableRef={tableRef}
+          showColumnToggle={false}
+          lockColumns={lockColumns}
+          pageSizeOptions={[5, 10, 20, 50, 100]}
         />
       </div>
     </div>

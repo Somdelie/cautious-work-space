@@ -1,7 +1,6 @@
-/* eslint-disable react-hooks/incompatible-library */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -12,44 +11,26 @@ import {
   type ColumnDef,
   type ColumnFiltersState,
   type SortingState,
+  type Table,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { ChevronDown } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ChevronDown, Columns3 } from "lucide-react";
 
 interface DataTableProps<T> {
   data: T[];
   columns: ColumnDef<T, any>[];
   pageSize?: number;
+  pageSizeOptions?: number[];
   className?: string;
-
-  /**
-   * Unique key per table so settings don't clash.
-   * Example: "boqguard:jobs:columns"
-   */
   storageKey: string;
-
-  /**
-   * Optional: columns that are not allowed to be hidden (e.g. actions)
-   * Use column ids.
-   */
   lockColumns?: string[];
+  mobileCardRenderer?: (item: T) => React.ReactNode;
+
+  // expose table instance to parent
+  tableRef?: React.MutableRefObject<Table<T> | null>;
+  // keep built-in column toggle if you want
+  showColumnToggle?: boolean;
+  emptyState?: React.ReactNode; // ✅ add
 }
 
 function safeParse<T>(value: string | null): T | null {
@@ -61,8 +42,7 @@ function safeParse<T>(value: string | null): T | null {
   }
 }
 
-// Extract a human-friendly label for the column picker
-function getColumnLabel<T>(col: any): string {
+function getColumnLabel(col: any): string {
   const h = col.columnDef?.header;
   if (typeof h === "string") return h;
   if (typeof col.id === "string") return col.id;
@@ -73,30 +53,46 @@ export function DataTable<T>({
   data,
   columns,
   pageSize = 5,
+  pageSizeOptions = [5, 10, 20, 50, 100],
   className = "",
   storageKey,
   lockColumns = [],
+  mobileCardRenderer,
+  tableRef,
+  showColumnToggle = true,
+  emptyState,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  // Load saved visibility once on mount
+  // ✅ persist page size per table
+  const pageSizeStorageKey = `${storageKey}:pageSize`;
+  const [pageSizeState, setPageSizeState] = useState<number>(() => {
+    if (typeof window === "undefined") return pageSize;
+    const raw = window.localStorage.getItem(pageSizeStorageKey);
+    const parsed = raw ? Number(raw) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : pageSize;
+  });
+
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
     () => {
       if (typeof window === "undefined") return {};
-      return (
-        safeParse<VisibilityState>(window.localStorage.getItem(storageKey)) ??
-        {}
-      );
+      const stored = window.localStorage.getItem(storageKey);
+      return safeParse<VisibilityState>(stored) ?? {};
     },
   );
 
-  // Persist visibility changes
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(storageKey, JSON.stringify(columnVisibility));
   }, [columnVisibility, storageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(pageSizeStorageKey, String(pageSizeState));
+  }, [pageSizeState, pageSizeStorageKey]);
 
   const memoData = useMemo(() => data, [data]);
   const memoColumns = useMemo(() => columns, [columns]);
@@ -108,12 +104,10 @@ export function DataTable<T>({
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
     onGlobalFilterChange: setGlobalFilter,
-
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-
     globalFilterFn: "includesString",
     state: {
       sorting,
@@ -122,171 +116,267 @@ export function DataTable<T>({
       globalFilter,
     },
     initialState: {
-      pagination: { pageSize },
+      pagination: { pageSize: pageSizeState },
     },
   });
+
+  // expose table to parent
+  useEffect(() => {
+    if (tableRef) tableRef.current = table;
+  }, [table, tableRef]);
+
+  // keep table page size synced with state
+  useEffect(() => {
+    table.setPageSize(pageSizeState);
+  }, [pageSizeState, table]);
 
   const hideableColumns = table
     .getAllLeafColumns()
     .filter((c) => c.getCanHide?.() !== false);
 
   const canReset =
-    typeof window !== "undefined" && window.localStorage.getItem(storageKey);
+    typeof window !== "undefined" && !!window.localStorage.getItem(storageKey);
 
   return (
-    <div className={`w-full space-y-4 ${className}`}>
-      {/* Top actions */}
-      <div className="flex items-center justify-end gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="border-slate-700">
-              Columns <ChevronDown className="ml-2 h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>Show / Hide columns</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-
-            {hideableColumns.map((col) => {
-              const isLocked = lockColumns.includes(col.id);
-              return (
-                <DropdownMenuCheckboxItem
-                  key={col.id}
-                  className="capitalize"
-                  checked={col.getIsVisible()}
-                  disabled={isLocked}
-                  onCheckedChange={(checked) => {
-                    // locked columns can't be changed
-                    if (isLocked) return;
-                    col.toggleVisibility(Boolean(checked));
-                  }}
-                >
-                  <span className="truncate max-w-[180px]">
-                    {getColumnLabel<T>(col)}
-                  </span>
-                </DropdownMenuCheckboxItem>
-              );
-            })}
-
-            <DropdownMenuSeparator />
-
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full justify-start"
-              disabled={!canReset}
-              onClick={() => {
-                if (typeof window === "undefined") return;
-                window.localStorage.removeItem(storageKey);
-                setColumnVisibility({});
-              }}
+    <div className={`w-full ${className}`}>
+      {/* Optional built-in column dropdown */}
+      {showColumnToggle && (
+        <div className="flex items-center justify-end gap-2">
+          <div className="relative">
+            <button
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              className="inline-flex items-center justify-center gap-1 sm:gap-2 rounded border border-slate-700 bg-transparent px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-slate-100 hover:bg-slate-800 transition-colors"
+              type="button"
             >
-              Reset to default
-            </Button>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+              <Columns3 className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Columns</span>
+              <ChevronDown className="h-3 w-3 sm:h-4 sm:w-4" />
+            </button>
 
-      {/* Table card */}
-      <div className="rounded-lg bg-gray-900/40 border border-slate-800">
-        <div className="w-full overflow-x-auto">
-          <div className="min-w-[980px]">
-            <Table className="w-full table-fixed">
-              <TableHeader className="sticky top-0 z-10">
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <TableRow
-                    key={headerGroup.id}
-                    className="bg-sky-800 hover:bg-sky-800 border-b border-sky-600"
-                  >
-                    {headerGroup.headers.map((header) => (
-                      <TableHead
-                        key={header.id}
-                        className="text-slate-100 font-semibold px-4 py-3 border-r border-sky-700 last:border-r-0"
-                      >
-                        <div className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(
-                                header.column.columnDef.header,
-                                header.getContext(),
-                              )}
-                        </div>
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableHeader>
+            {dropdownOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setDropdownOpen(false)}
+                />
+                <div className="absolute right-0 top-full mt-2 w-48 sm:w-56 z-50 rounded border border-slate-700 bg-slate-900 shadow-lg">
+                  <div className="p-2">
+                    <div className="px-2 py-1.5 text-xs sm:text-sm text-slate-100">
+                      Show / Hide columns
+                    </div>
+                    <div className="my-1 h-px bg-slate-700" />
 
-              <TableBody>
-                {table.getRowModel().rows?.length ? (
-                  table.getRowModel().rows.map((row) => (
-                    <TableRow
-                      key={row.id}
-                      data-state={row.getIsSelected() && "selected"}
-                      className="hover:bg-white/5 border-b border-slate-800"
+                    <div className="max-h-[60vh] overflow-y-auto">
+                      {hideableColumns.map((col) => {
+                        const isLocked = lockColumns.includes(col.id);
+                        return (
+                          <label
+                            key={col.id}
+                            className={`flex items-center gap-2 px-2 py-1.5 text-xs sm:text-sm rounded hover:bg-slate-800 cursor-pointer ${
+                              isLocked ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={col.getIsVisible()}
+                              disabled={isLocked}
+                              onChange={(e) => {
+                                if (!isLocked)
+                                  col.toggleVisibility(e.target.checked);
+                              }}
+                              className="h-4 w-4 rounded border-slate-600 bg-slate-800 text-sky-600"
+                            />
+                            <span className="truncate capitalize text-slate-200">
+                              {getColumnLabel(col)}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    <div className="my-1 h-px bg-slate-700" />
+
+                    <button
+                      disabled={!canReset}
+                      onClick={() => {
+                        if (typeof window === "undefined") return;
+                        window.localStorage.removeItem(storageKey);
+                        table.setColumnVisibility({});
+                      }}
+                      className="w-full px-2 py-1.5 text-xs sm:text-sm text-left text-slate-200 hover:bg-slate-800 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                      type="button"
                     >
-                      {row.getVisibleCells().map((cell) => (
-                        <TableCell
-                          key={cell.id}
-                          className="px-4 py-3 align-middle border-r border-slate-800 last:border-r-0"
-                        >
-                          {/* default truncation wrapper */}
-                          <div className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-                            {flexRender(
-                              cell.column.columnDef.cell,
-                              cell.getContext(),
-                            )}
-                          </div>
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow className="border-b border-slate-800">
-                    <TableCell
-                      colSpan={table.getAllLeafColumns().length}
-                      className="h-24 text-center text-slate-400"
-                    >
-                      No data found.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                      Reset to default
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
+      )}
+
+      {/* Mobile Card View (< 768px) */}
+      <div className="md:hidden space-y-3">
+        {table.getRowModel().rows?.length ? (
+          table.getRowModel().rows.map((row) => (
+            <div
+              key={row.id}
+              className="rounded-lg bg-gray-900/40 border border-slate-800 p-4"
+            >
+              {mobileCardRenderer ? (
+                mobileCardRenderer(row.original)
+              ) : (
+                <div className="space-y-2">
+                  {row.getVisibleCells().map((cell) => {
+                    const header = cell.column.columnDef.header;
+                    const headerText =
+                      typeof header === "string" ? header : cell.column.id;
+
+                    return (
+                      <div
+                        key={cell.id}
+                        className="flex justify-between gap-3 text-sm"
+                      >
+                        <span className="font-medium text-slate-400 min-w-[100px]">
+                          {headerText}:
+                        </span>
+                        <span className="text-slate-100 text-right flex-1">
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ))
+        ) : (
+          <div className="rounded-lg bg-gray-900/40 border border-slate-800 p-8 text-center">
+            {emptyState ?? (
+              <p className="text-slate-400 text-sm">No data found.</p>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Footer */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-2">
-        <div className="text-sm text-slate-400">
-          Showing {table.getFilteredRowModel().rows.length} of {memoData.length}{" "}
-          data
+      {/* Desktop Table View (≥ 768px) */}
+      <div className="hidden md:block border dark:border-slate-800 max-h-[71.1vh] overflow-auto">
+        <div className="w-full overflow-x-auto">
+          <table className="w-full border-collapse relative">
+            <thead className="sticky top-0 z-10">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <tr
+                  key={headerGroup.id}
+                  className="dark:bg-teal-800 border-b border-slate-600 bg-sky-900 text-slate-900"
+                >
+                  {headerGroup.headers.map((header) => (
+                    <th
+                      key={header.id}
+                      className="dark:text-slate-100 px-3 lg:px-4 py-3 border-r dark:border-slate-700 last:border-r-0 text-xs lg:text-sm text-left"
+                    >
+                      <div className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
+                            )}
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              ))}
+            </thead>
+
+            <tbody className="dark:bg-slate-800/80 bg-card/80">
+              {table.getRowModel().rows?.length ? (
+                table.getRowModel().rows.map((row) => (
+                  <tr
+                    key={row.id}
+                    className="hover:bg-white/5 border-b dark:border-gray-700 transition-colors"
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <td
+                        key={cell.id}
+                        className="px-3 lg:px-4 py-1 align-middle border-r dark:border-gray-700 last:border-r-0 text-xs lg:text-sm text-slate-200"
+                      >
+                        <div className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </div>
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan={table.getAllLeafColumns().length}
+                    className="h-24 text-center text-slate-400 text-sm"
+                  >
+                    <div className="py-10">
+                      {emptyState ?? "No data found."}
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
+      </div>
+
+      {/* ✅ Footer (rows-per-page dropdown added) */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 p-2">
+        <div className="text-xs sm:text-sm text-slate-400 text-center sm:text-left">
+          Showing {table.getFilteredRowModel().rows.length} of {memoData.length}{" "}
+          {memoData.length === 1 ? "item" : "items"}
+        </div>
+
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* rows per page */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs sm:text-sm text-slate-400">Rows:</span>
+            <select
+              value={pageSizeState}
+              onChange={(e) => setPageSizeState(Number(e.target.value))}
+              className="rounded border border-slate-700 bg-transparent px-4 py-1 text-xs sm:text-sm font-medium text-slate-100 hover:bg-slate-800 transition-colors"
+            >
+              {pageSizeOptions.map((n) => (
+                <option key={n} value={n} className="bg-slate-900">
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
-            className="border border-slate-700"
+            className="rounded border border-slate-700 bg-transparent px-2 sm:px-3 py-1 text-xs sm:text-sm font-medium text-slate-100 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            type="button"
           >
             Previous
-          </Button>
-          <div className="text-sm text-slate-400">
+          </button>
+
+          <div className="text-xs sm:text-sm text-slate-400 px-1 min-w-20 sm:min-w-[100px] text-center">
             Page {table.getState().pagination.pageIndex + 1} of{" "}
             {table.getPageCount()}
           </div>
-          <Button
-            variant="outline"
-            size="sm"
+
+          <button
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
-            className="border border-slate-700"
+            className="rounded border border-slate-700 bg-transparent px-2 sm:px-3 py-1 text-xs sm:text-sm font-medium text-slate-100 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            type="button"
           >
             Next
-          </Button>
+          </button>
         </div>
       </div>
     </div>

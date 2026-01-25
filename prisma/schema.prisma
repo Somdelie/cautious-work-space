@@ -136,10 +136,18 @@ model SpreadRate {
 }
 
 model Job {
-  id        String  @id @default(cuid())
-  jobNumber String  @unique
+  id        String @id @default(cuid())
+  jobNumber String @unique
   siteName  String
-  client    String?
+
+  client            String?
+  specsReceived     Boolean @default(false)
+  finishingSchedule String?
+  safetyFile        String?
+
+  loa           String?
+  pointers      String?
+  dateRequested DateTime?
 
   source         JobSource @default(APP)
   importedAt     DateTime?
@@ -187,7 +195,7 @@ model JobProduct {
 
 model Order {
   id          String @id @default(cuid())
-  orderNumber String
+  orderNumber String @unique
   jobId       String
   job         Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 

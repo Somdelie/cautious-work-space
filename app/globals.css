@@ -49,8 +49,7 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
   width: 100%;
-  height: 100%;
-  overflow-x: hidden;
+  /* Remove height and overflow to prevent unwanted scrollbars */
   background-image: var(--wallpaper, url("/images/wallpaper1.jpg"));
   background-size: cover;
   background-repeat: no-repeat;

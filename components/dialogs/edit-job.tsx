@@ -294,7 +294,6 @@ export function EditJobDialog({
         siteName: siteName.trim(),
         client: client.trim() || undefined,
         managerId: managerId || undefined,
-        managerNameRaw: managerNameRaw.trim() || undefined,
         supplierId: supplierId || undefined,
         specPdfUrl: specPdfUrl ?? undefined,
         boqPdfUrl: boqPdfUrl ?? undefined,

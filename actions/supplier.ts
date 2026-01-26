@@ -1,214 +1,207 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
-type SupplierListRow = {
+/** helpers */
+function decToNumber(v: any): number {
+  if (v === null || v === undefined) return 0;
+  if (v instanceof Prisma.Decimal) return Number(v.toString());
+  if (typeof v === "string") return Number(v);
+  if (typeof v === "number") return v;
+  return Number(v);
+}
+
+export type SupplierDTO = {
   id: string;
   name: string;
   logoUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
   jobsCount: number;
 };
-/** Normalize for comparisons (case/space insensitive) */
-function normalizeKey(input: string) {
-  return String(input ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
 
-/** Optional: enforce consistent display casing */
-function titleCase(input: string) {
-  const n = String(input ?? "").trim();
-  if (!n) return n;
-  return n
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(" ");
-}
+export type SupplierDetailsDTO = SupplierDTO & {
+  jobs: Array<{ id: string; jobNumber: string; siteName: string; createdAt: string }>;
+  supplierProducts: Array<{
+    product: { id: string; name: string };
+    isActive: boolean;
+  }>;
+  prices: Array<{
+    id: string;
+    product: { id: string; name: string };
+    option: { id: string; value: number; label: string; unit: { id: string; code: string; name: string } };
+    price: number;
+    sku: string | null;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+};
 
-/** Optional: fix known supplier aliases/typos */
-function canonicalSupplierName(name: string) {
-  const key = normalizeKey(name);
-
-  const aliases: Record<string, string> = {
-    dulax: "Dulux",
-    dulux: "Dulux",
-    terraco: "Terraco",
-    marmoran: "Marmoran",
-    plascon: "Plascon",
-  };
-
-  return aliases[key] ?? titleCase(name);
-}
-
-/** Find supplier by name case-insensitively */
-async function findSupplierByNameInsensitive(name: string) {
-  return prisma.supplier.findFirst({
-    where: {
-      name: {
-        equals: name,
-        mode: "insensitive",
-      },
-    },
-  });
-}
-
-export async function createSupplier(data: { name: string; logoUrl?: string }) {
-  try {
-    const canonicalName = canonicalSupplierName(data.name);
-
-    if (!canonicalName) {
-      return { success: false, error: "Supplier name is required" };
-    }
-
-    // ✅ Prevent duplicates (case-insensitive)
-    const existing = await findSupplierByNameInsensitive(canonicalName);
-    if (existing) {
-      // Optional: update logo if provided & existing has none
-      if (data.logoUrl !== undefined && data.logoUrl !== existing.logoUrl) {
-        const updated = await prisma.supplier.update({
-          where: { id: existing.id },
-          data: { logoUrl: data.logoUrl },
-        });
-
-        revalidatePath("/suppliers");
-        revalidatePath("/");
-        return { success: true, data: updated };
-      }
-
-      revalidatePath("/suppliers");
-      revalidatePath("/");
-      return { success: true, data: existing };
-    }
-
-    const supplier = await prisma.supplier.create({
-      data: {
-        name: canonicalName,
-        ...(data.logoUrl !== undefined && { logoUrl: data.logoUrl }),
-      },
-    });
-
-    revalidatePath("/suppliers");
-    revalidatePath("/");
-    return { success: true, data: supplier };
-  } catch (error: any) {
-    // If DB unique constraint throws (just in case)
-    if (error?.code === "P2002") {
-      return { success: false, error: "Supplier already exists" };
-    }
-    return { success: false, error: "Failed to create supplier" };
-  }
-}
-
-export async function getSuppliers(): Promise<
-  { success: true; data: SupplierListRow[] } | { success: false; error: string }
-> {
+export async function getSuppliers() {
   try {
     const suppliers = await prisma.supplier.findMany({
-      select: {
-        id: true,
-        name: true,
-        logoUrl: true,
-        _count: { select: { jobs: true } },
+      include: {
+        jobs: { select: { id: true } },
       },
       orderBy: { name: "asc" },
     });
 
-    // ✅ plain objects only
-    const data: SupplierListRow[] = suppliers.map((s) => ({
+    const data: SupplierDTO[] = suppliers.map((s) => ({
       id: s.id,
       name: s.name,
-      logoUrl: s.logoUrl,
-      jobsCount: s._count.jobs,
+      logoUrl: s.logoUrl ?? null,
+      createdAt: s.createdAt.toISOString(),
+      updatedAt: s.updatedAt.toISOString(),
+      jobsCount: s.jobs ? s.jobs.length : 0,
     }));
 
     return { success: true, data };
   } catch (e: any) {
-    return { success: false, error: e?.message ?? "Failed to fetch suppliers" };
+    return { success: false, data: null, error: e?.message ?? "Failed" };
   }
 }
 
 export async function getSupplierById(id: string) {
+  if (!id) return { success: false, error: "Missing supplier id" };
+
   try {
-    const supplier = await prisma.supplier.findUnique({
+    const s = await prisma.supplier.findUnique({
       where: { id },
       include: {
-        jobs: {
+        jobs: { select: { id: true, jobNumber: true, siteName: true, createdAt: true } },
+        supplierProducts: {
+          include: { product: { select: { id: true, name: true } } },
+          orderBy: { createdAt: "desc" },
+        },
+        supplierVariantPrices: {
           include: {
-            manager: true,
-            jobProducts: {
-              include: {
-                product: true,
-              },
-            },
+            product: { select: { id: true, name: true } },
+            productOption: { include: { option: { include: { unit: true } } } },
           },
+          orderBy: [{ updatedAt: "desc" }],
         },
       },
     });
-    return { success: true, data: supplier };
-  } catch (error) {
-    return { success: false, error: "Failed to fetch supplier" };
+
+    if (!s) return { success: false, error: "Supplier not found" };
+
+    // ✅ DTO conversion (no Date/Decimal objects)
+    const dto: SupplierDetailsDTO = {
+      id: s.id,
+      name: s.name,
+      logoUrl: s.logoUrl ?? null,
+      createdAt: s.createdAt.toISOString(),
+      updatedAt: s.updatedAt.toISOString(),
+      jobsCount: s.jobs ? s.jobs.length : 0,
+
+      jobs: (s.jobs ?? []).map((j: any) => ({
+        id: j.id,
+        jobNumber: j.jobNumber,
+        siteName: j.siteName,
+        createdAt: j.createdAt.toISOString(),
+      })),
+
+      supplierProducts: (s.supplierProducts ?? []).map((sp: any) => ({
+        product: { id: sp.product.id, name: sp.product.name },
+        isActive: sp.isActive,
+      })),
+
+      prices: (s.supplierVariantPrices ?? []).map((p: any) => ({
+        id: p.id,
+        product: { id: p.product.id, name: p.product.name },
+        option: {
+          id: p.productOption.option.id,
+          value: p.productOption.option.value,
+          label: p.productOption.option.label?.trim() || `${p.productOption.option.value}${p.productOption.option.unit.code.toLowerCase()}`,
+          unit: { id: p.productOption.option.unit.id, code: p.productOption.option.unit.code, name: p.productOption.option.unit.name },
+        },
+        price: decToNumber(p.price),
+        sku: p.sku ?? null,
+        isActive: p.isActive,
+        createdAt: p.createdAt.toISOString(),
+        updatedAt: p.updatedAt.toISOString(),
+      })),
+    };
+
+    return { success: true, data: dto };
+  } catch (e: any) {
+    return { success: false, error: e?.message ?? "Failed to fetch supplier" };
   }
 }
 
-export async function updateSupplier(
-  id: string,
-  data: { name: string; logoUrl?: string },
-) {
+export async function createSupplier(input: { name: string; logoUrl?: string | null }) {
+  const name = input.name?.trim();
+  if (!name) return { success: false, error: "Supplier name is required" };
+
   try {
-    const canonicalName = canonicalSupplierName(data.name);
-
-    if (!canonicalName) {
-      return { success: false, error: "Supplier name is required" };
-    }
-
-    // ✅ Prevent renaming to a name that already exists (case-insensitive)
-    const clash = await prisma.supplier.findFirst({
-      where: {
-        id: { not: id },
-        name: { equals: canonicalName, mode: "insensitive" },
+    const s = await prisma.supplier.create({
+      data: {
+        name,
+        logoUrl: input.logoUrl?.trim() || null,
       },
-      select: { id: true, name: true },
     });
 
-    if (clash) {
-      return {
-        success: false,
-        error: `A supplier named "${clash.name}" already exists.`,
-      };
-    }
+    revalidatePath("/suppliers");
 
-    const supplier = await prisma.supplier.update({
+    return {
+      success: true,
+      data: {
+        id: s.id,
+        name: s.name,
+        logoUrl: s.logoUrl ?? null,
+        createdAt: s.createdAt.toISOString(),
+        updatedAt: s.updatedAt.toISOString(),
+        jobsCount: 0,
+      } satisfies SupplierDTO,
+    };
+  } catch (e: any) {
+    return { success: false, error: e?.message ?? "Failed to create supplier" };
+  }
+}
+
+export async function updateSupplier(id: string, input: { name?: string; logoUrl?: string | null }) {
+  if (!id) return { success: false, error: "Missing supplier id" };
+
+  try {
+    const s = await prisma.supplier.update({
       where: { id },
       data: {
-        name: canonicalName,
-        ...(data.logoUrl !== undefined && { logoUrl: data.logoUrl }),
+        ...(typeof input.name === "string" ? { name: input.name.trim() } : {}),
+        ...(input.logoUrl !== undefined ? { logoUrl: input.logoUrl?.trim() || null } : {}),
       },
+      include: { jobs: { select: { id: true } } },
     });
 
     revalidatePath("/suppliers");
     revalidatePath(`/suppliers/${id}`);
-    revalidatePath("/");
-    return { success: true, data: supplier };
-  } catch (error: any) {
-    if (error?.code === "P2002") {
-      return { success: false, error: "Supplier name already exists" };
-    }
-    return { success: false, error: "Failed to update supplier" };
+
+    return {
+      success: true,
+      data: {
+        id: s.id,
+        name: s.name,
+        logoUrl: s.logoUrl ?? null,
+        createdAt: s.createdAt.toISOString(),
+        updatedAt: s.updatedAt.toISOString(),
+        jobsCount: s.jobs.length,
+      } satisfies SupplierDTO,
+    };
+  } catch (e: any) {
+    return { success: false, error: e?.message ?? "Failed to update supplier" };
   }
 }
 
 export async function deleteSupplier(id: string) {
+  if (!id) return { success: false, error: "Missing supplier id" };
+
   try {
     await prisma.supplier.delete({ where: { id } });
-
     revalidatePath("/suppliers");
-    revalidatePath("/");
     return { success: true };
-  } catch (error) {
-    return { success: false, error: "Failed to delete supplier" };
+  } catch (e: any) {
+    return { success: false, error: e?.message ?? "Failed to delete supplier" };
   }
 }

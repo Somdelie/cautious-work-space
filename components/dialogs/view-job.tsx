@@ -29,12 +29,12 @@ import {
   ExternalLink,
   X,
 } from "lucide-react";
-import { getJobById } from "@/actions/job";
 import { generateJobOrderPDF } from "@/actions/pdf-export";
 import { OrdersTable } from "@/components/orders/orders-table";
 import { toast } from "sonner";
 import { Download } from "lucide-react";
 import { CreateOrderDialog } from "./create-order";
+import { getJobByIdDTO } from "@/actions/job";
 
 interface ViewJobDialogProps {
   jobId: string | null;
@@ -104,45 +104,29 @@ export function ViewJobDialog({
     setLoading(true);
     setError(null);
     try {
-      const result = await getJobById(jobId);
+      const result = await getJobByIdDTO(jobId);
       if (result.success && result.data) {
         // Map backend order items to new structure
         const raw = result.data;
-        const jobData: JobData = {
-          ...raw,
-          manager: raw.manager ?? {
-            id: "",
-            name: "",
-            phone: null,
-            email: null,
-          },
-          supplier: raw.supplier ?? { id: "", name: "" },
-          jobProducts: Array.isArray(raw.jobProducts)
-            ? raw.jobProducts.map((jp: any) => ({
-                ...jp,
-                quantity:
-                  typeof jp.quantity === "object" &&
-                  jp.quantity !== null &&
-                  typeof jp.quantity.toNumber === "function"
-                    ? jp.quantity.toNumber()
-                    : jp.quantity,
-              }))
-            : [],
-          orders: Array.isArray(raw.orders)
-            ? raw.orders.map((order: any) => ({
-                id: order.id,
-                orderNumber: order.orderNumber,
-                createdAt: order.createdAt,
-                items: Array.isArray(order.items)
-                  ? order.items.map((item: any) => ({
-                      id: item.id,
-                      quantity: item.quantity,
-                      unit: item.unit,
-                    }))
-                  : [],
-              }))
-            : [],
-        };
+          const jobData: JobData = {
+            id: raw.id,
+            jobNumber: raw.jobNumber,
+            siteName: raw.siteName,
+            client: raw.client ?? null,
+            isStarted: raw.isStarted,
+            isFinished: raw.isFinished,
+            startedAt: null, // Not present in JobRowDTO
+            finishedAt: null, // Not present in JobRowDTO
+            createdAt: raw.createdAt ? new Date(raw.createdAt) : new Date(),
+            specPdfUrl: raw.specPdfUrl ?? null,
+            boqPdfUrl: raw.boqPdfUrl ?? null,
+            manager: raw.manager
+              ? { id: raw.manager.id, name: raw.manager.name, phone: null, email: null }
+              : { id: "", name: "", phone: null, email: null },
+            supplier: raw.supplier ? { id: raw.supplier.id, name: raw.supplier.name } : { id: "", name: "" },
+            jobProducts: [], // Not present in JobRowDTO, fill as empty array
+            orders: [], // Not present in JobRowDTO, fill as empty array
+          };
         if (jobData.startedAt && typeof jobData.startedAt === "string") {
           jobData.startedAt = new Date(jobData.startedAt);
         }

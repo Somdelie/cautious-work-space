@@ -6,9 +6,6 @@ export async function extractJobsFromExcel(input: {
 }): Promise<IncomingJob[]> {
   const xlsx = require("xlsx");
   const path = require("path");
-  const fileName = input.filePath
-    ? path.basename(input.filePath)
-    : "uploaded.xlsx";
   let wb;
   try {
     wb = xlsx.readFile(input.filePath, { cellDates: true });
@@ -47,6 +44,7 @@ export async function extractJobsFromExcel(input: {
     client: "client",
     supervis: "managerName",
     supervisor: "managerName",
+    specsRecieved: "specsReceived",
   };
   function normalizeHeader(s: string) {
     return String(s || "")
@@ -128,11 +126,6 @@ function normalizeHeader(s: string) {
     .replace(/\s+/g, " ");
 }
 
-function normalizeJobNumber(s: string) {
-  return String(s || "")
-    .trim()
-    .replace(/\s+/g, " ");
-}
 
 function normalizeName(s: string) {
   return String(s || "")
@@ -160,6 +153,9 @@ const HEADER_ALIASES: Record<string, string> = {
   // managerNameRaw
   supervis: "managerName",
   supervisor: "managerName",
+
+  // specsReceived
+  specsrecieved: "specsReceived",
 };
 
 function mapHeaders(rawHeaders: string[]) {
@@ -178,10 +174,6 @@ function getVal(row: any[], idx?: number) {
   return String(row[idx] ?? "").trim();
 }
 
-function getCell(row: any[], idx?: number) {
-  if (idx === undefined) return "";
-  return row[idx];
-}
 
 function toStringSafe(v: any) {
   if (v === null || v === undefined) return "";
@@ -236,34 +228,9 @@ async function findManagerIdByName(rawManager: string) {
   return null;
 }
 
-async function findSupplierIdByName(rawSupplier: string) {
-  const name = normalizeName(rawSupplier);
-  if (!name) return null;
 
-  const s = await prisma.supplier.findFirst({
-    where: {
-      name: { equals: name, mode: "insensitive" },
-    },
-    select: { id: true },
-  });
-
-  return s?.id ?? null;
-}
-
-function isTruthyFlag(v: any): boolean | null {
-  const s = String(v ?? "")
-    .trim()
-    .toLowerCase();
-  if (!s) return null;
-  if (["yes", "y", "true", "1"].includes(s)) return true;
-  if (["no", "n", "false", "0"].includes(s)) return false;
-  return null;
-}
 
 export async function syncJobsFromExcel(input: SyncInput) {
-  const allowOverwrite =
-    String(process.env.ALLOW_EXCEL_OVERWRITE || "false").toLowerCase() ===
-    "true";
 
   if (!input.filePath && !input.buffer) {
     return {
@@ -355,6 +322,7 @@ export async function syncJobsFromExcel(input: SyncInput) {
   const siteNameIdx = headerMap.get("siteName");
   const clientIdx = headerMap.get("client");
   const managerNameIdx = headerMap.get("managerName");
+  const specsReceivedIdx = headerMap.get("specsReceived");
 
   const errors: SyncError[] = [];
 
@@ -406,6 +374,8 @@ export async function syncJobsFromExcel(input: SyncInput) {
         }
         let siteName = getVal(row, siteNameIdx);
         let client = getVal(row, clientIdx) || null;
+        let specsReceivedRaw = getVal(row, specsReceivedIdx);
+        let specsReceived: Date | null = null;
         let managerNameRaw = getVal(row, managerNameIdx) || null;
         let managerId: string | null = null;
         if (managerNameRaw) {
@@ -468,6 +438,7 @@ export async function syncJobsFromExcel(input: SyncInput) {
             excelRowRef: rowRef,
             managerNameRaw,
             managerId, // <-- link to Manager
+            specsReceived: !!specsReceivedRaw,
           },
           select: { id: true, createdAt: true, updatedAt: true },
         });

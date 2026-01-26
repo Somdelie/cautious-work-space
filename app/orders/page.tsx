@@ -1,6 +1,7 @@
 // app/orders/page.tsx (SERVER COMPONENT)
+import { getAllJobsDTO } from "@/actions/job";
 import { getAllOrders } from "@/actions/order";
-import { getAllJobs } from "@/actions/job";
+
 import {
   OrdersDataTable,
   type UIOrder,
@@ -19,7 +20,7 @@ function decToNumber(v: any) {
 
 export default async function OrdersPage() {
   const ordersRes = await getAllOrders();
-  const jobsRes = await getAllJobs();
+  const jobsRes = await getAllJobsDTO();
 
   const jobs =
     jobsRes.success && jobsRes.data

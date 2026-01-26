@@ -10,9 +10,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertTriangle } from "lucide-react";
-import { deleteJob } from "@/actions/job";
 import { toast } from "sonner";
 import { useState } from "react";
+import { deleteJobProduct } from "@/actions/job-product";
 
 interface DeleteJobDialogProps {
   jobId: string | null;
@@ -38,7 +38,7 @@ export function DeleteJobDialog({
 
     setLoading(true);
     try {
-      const result = await deleteJob(jobId);
+      const result = await deleteJobProduct(jobId);
       if (result.success) {
         toast.success("Job deleted successfully");
         onOpenChange(false);

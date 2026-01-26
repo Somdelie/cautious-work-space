@@ -25,7 +25,6 @@ import {
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-// ✅ NEW actions (you need these)
 import { getSuppliers } from "@/actions/supplier";
 import {
   getProductById,
@@ -36,14 +35,16 @@ import {
 } from "@/actions/product";
 
 type UsageType = "INTERNAL" | "EXTERNAL" | "BOTH";
-type MeasureUnit = "L" | "KG" | "EA";
 
-type Supplier = { id: string; name: string };
+// ✅ FIX: unit codes are dynamic in your schema (Unit.code), so use string
+type UnitCode = string;
+
+type Supplier = { id: string; name: string; logoUrl?: string | null };
 
 type Variant = {
   id: string;
   size: number;
-  unit: MeasureUnit;
+  unit: UnitCode;
   price: number;
   sku: string | null;
   isActive: boolean;
@@ -82,10 +83,33 @@ function uiToUsage(v: string): UsageType {
   return "BOTH";
 }
 
-function normalizeSize(n: string) {
+function normalizeNumber(n: string) {
   const v = Number(String(n).replace(",", "."));
   return Number.isFinite(v) ? v : 0;
 }
+
+/** ---------------- Variants child types ---------------- */
+type VariantSavePayload = {
+  id?: string;
+  supplierId: string;
+  productId: string;
+  size: number;
+  unit: UnitCode;
+  price: number;
+  sku?: string | null;
+  isActive: boolean;
+};
+
+type VariantsPanelProps = {
+  productId: string;
+  supplierId: string;
+  variants: Variant[];
+  disabled: boolean;
+  onSave: (payload: VariantSavePayload) => Promise<void>;
+  onDelete: (variantId: string) => Promise<void>;
+  // optional unit list if you want it dynamic later
+  unitOptions?: UnitCode[];
+};
 
 export function EditProductDialog({
   productId,
@@ -111,7 +135,6 @@ export function EditProductDialog({
     [],
   );
 
-  // ---- derived
   const selectedSP = useMemo(() => {
     return (
       supplierProducts.find((sp) => sp.supplierId === selectedSupplierId) ??
@@ -119,7 +142,7 @@ export function EditProductDialog({
     );
   }, [supplierProducts, selectedSupplierId]);
 
-  // ---- load suppliers when open
+  // load suppliers when open
   useEffect(() => {
     if (!open) return;
     (async () => {
@@ -128,7 +151,7 @@ export function EditProductDialog({
     })();
   }, [open]);
 
-  // ---- load product when open/productId changes
+  // load product
   useEffect(() => {
     if (!open || !productId) return;
 
@@ -142,23 +165,20 @@ export function EditProductDialog({
           return;
         }
 
-        // Convert all variant.price from Decimal to number
-        const p = {
+        // Ensure numeric prices
+        const p: Product = {
           ...res.data,
-          supplierProducts: (res.data.supplierProducts ?? []).map(
-            (sp: any) => ({
-              ...sp,
-              variants: (sp.variants ?? []).map((v: any) => ({
-                ...v,
-                price:
-                  typeof v.price === "object" &&
-                  v.price !== null &&
-                  typeof v.price.toNumber === "function"
-                    ? v.price.toNumber()
-                    : v.price,
-              })),
-            }),
-          ),
+          supplierProducts: (res.data.supplierProducts ?? []).map((sp: any) => ({
+            ...sp,
+            variants: (sp.variants ?? []).map((v: any) => ({
+              ...v,
+              price: Number(v.price ?? 0),
+              unit: String(v.unit ?? v.productOption?.option?.unit?.code ?? ""),
+              size: Number(v.size ?? v.productOption?.option?.value ?? 0),
+              sku: v.sku ?? null,
+              isActive: Boolean(v.isActive),
+            })),
+          })),
         };
 
         setName(p.name ?? "");
@@ -168,7 +188,6 @@ export function EditProductDialog({
         const sps = p.supplierProducts ?? [];
         setSupplierProducts(sps);
 
-        // pick a default supplier for variants UI
         const firstActive = sps.find((x) => x.isActive) ?? sps[0] ?? null;
         setSelectedSupplierId(firstActive?.supplierId ?? "");
       } catch {
@@ -180,7 +199,7 @@ export function EditProductDialog({
     })();
   }, [open, productId, onOpenChange]);
 
-  // ---- reset on close
+  // reset on close
   useEffect(() => {
     if (!open) {
       setName("");
@@ -229,8 +248,15 @@ export function EditProductDialog({
       } else {
         toast.success(checked ? "Supplier linked" : "Supplier disabled");
         if (checked) setSelectedSupplierId(supplierId);
+        if (!checked && selectedSupplierId === supplierId) {
+          // switch selection to another active supplier if current was disabled
+          const next = supplierProducts.find(
+            (sp) => sp.supplierId !== supplierId && sp.isActive,
+          );
+          setSelectedSupplierId(next?.supplierId ?? "");
+        }
       }
-    } catch (e) {
+    } catch {
       toast.error("Failed to update supplier link");
     }
   };
@@ -267,16 +293,7 @@ export function EditProductDialog({
     }
   };
 
-  const handleUpsertVariant = async (payload: {
-    id?: string;
-    supplierId: string;
-    productId: string;
-    size: number;
-    unit: MeasureUnit;
-    price: number;
-    sku?: string | null;
-    isActive: boolean;
-  }) => {
+  const handleUpsertVariant = async (payload: VariantSavePayload) => {
     try {
       const res = await upsertVariant(payload);
       if (!res.success || !res.data) {
@@ -284,86 +301,25 @@ export function EditProductDialog({
         return;
       }
 
-      // Convert price to number if needed
-      const saved = {
-        ...res.data,
-        price:
-          typeof res.data.price === "object" &&
-          res.data.price !== null &&
-          typeof res.data.price.toNumber === "function"
-            ? res.data.price.toNumber()
-            : res.data.price,
+      const saved: Variant = {
+        id: String(res.data.id ?? payload.id ?? ""),
+        size: Number(res.data.size ?? payload.size),
+        unit: String(res.data.unit ?? payload.unit),
+        price: Number(res.data.price ?? payload.price),
+        sku: res.data.sku ?? payload.sku ?? null,
+        isActive: Boolean(res.data.isActive ?? payload.isActive),
       };
 
       setSupplierProducts((prev) =>
         prev.map((sp) => {
-          if (sp.supplierId !== payload.supplierId) {
-            // Ensure all prices are numbers in other suppliers too
-            return {
-              ...sp,
-              variants: sp.variants.map((v) => ({
-                ...v,
-                price:
-                  typeof v.price === "object" &&
-                  v.price !== null &&
-                  typeof (v.price as any).toNumber === "function"
-                    ? (v.price as any).toNumber()
-                    : (v.price as number),
-              })) as Variant[],
-            };
-          }
-          // For the supplier being updated, update or add the variant, and ensure all prices are numbers
-          const updatedVariants = (() => {
-            const found = sp.variants.find((v) => v.id === saved.id);
-            if (found) {
-              return sp.variants.map((v) =>
-                v.id === saved.id
-                  ? {
-                      ...saved,
-                      price:
-                        typeof saved.price === "object" &&
-                        saved.price !== null &&
-                        typeof (saved.price as any).toNumber === "function"
-                          ? (saved.price as any).toNumber()
-                          : (saved.price as number),
-                    }
-                  : {
-                      ...v,
-                      price:
-                        typeof v.price === "object" &&
-                        v.price !== null &&
-                        typeof (v.price as any).toNumber === "function"
-                          ? (v.price as any).toNumber()
-                          : (v.price as number),
-                    },
-              );
-            } else {
-              return [
-                {
-                  ...saved,
-                  price:
-                    typeof saved.price === "object" &&
-                    saved.price !== null &&
-                    typeof (saved.price as any).toNumber === "function"
-                      ? (saved.price as any).toNumber()
-                      : (saved.price as number),
-                },
-                ...sp.variants.map((v) => ({
-                  ...v,
-                  price:
-                    typeof v.price === "object" &&
-                    v.price !== null &&
-                    typeof (v.price as any).toNumber === "function"
-                      ? (v.price as any).toNumber()
-                      : (v.price as number),
-                })),
-              ];
-            }
-          })();
-          return {
-            ...sp,
-            variants: updatedVariants as Variant[],
-          };
+          if (sp.supplierId !== payload.supplierId) return sp;
+
+          const exists = sp.variants.find((v) => v.id === saved.id);
+          const nextVariants = exists
+            ? sp.variants.map((v) => (v.id === saved.id ? saved : v))
+            : [saved, ...sp.variants];
+
+          return { ...sp, variants: nextVariants };
         }),
       );
 
@@ -393,6 +349,9 @@ export function EditProductDialog({
       toast.error("Failed to delete variant");
     }
   };
+
+  // ✅ choose unit options (static for now, can be dynamic later)
+  const unitOptions: UnitCode[] = ["L", "KG", "EA", "MM", "PACK", "ROLL"];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -527,17 +486,13 @@ export function EditProductDialog({
               </div>
             </div>
 
-            {/* Variants editor for selected supplier */}
+            {/* Variants editor */}
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-slate-100">
-                    Variants
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    Sizes/prices are supplier-specific (e.g., 20L, 5L, 25KG)
-                  </p>
-                </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-100">Variants</p>
+                <p className="text-xs text-slate-400">
+                  Sizes/prices are supplier-specific (e.g., 20L, 5L, 25KG)
+                </p>
               </div>
 
               {!selectedSupplierId || !selectedSP ? (
@@ -552,6 +507,7 @@ export function EditProductDialog({
                   disabled={loading}
                   onSave={handleUpsertVariant}
                   onDelete={handleDeleteVariant}
+                  unitOptions={unitOptions}
                 />
               )}
             </div>
@@ -585,33 +541,22 @@ function VariantsPanel({
   disabled,
   onSave,
   onDelete,
-}: {
-  productId: string;
-  supplierId: string;
-  variants: Variant[];
-  disabled: boolean;
-  onSave: (payload: {
-    id?: string;
-    supplierId: string;
-    productId: string;
-    size: number;
-    unit: MeasureUnit;
-    price: number;
-    sku?: string | null;
-    isActive: boolean;
-  }) => Promise<void>;
-  onDelete: (variantId: string) => Promise<void>;
-}) {
+  unitOptions = ["L", "KG", "EA"],
+}: VariantsPanelProps) {
   const [newSize, setNewSize] = useState<string>("");
-  const [newUnit, setNewUnit] = useState<MeasureUnit>("L");
+  const [newUnit, setNewUnit] = useState<UnitCode>(unitOptions[0] ?? "L");
   const [newPrice, setNewPrice] = useState<string>("");
 
+  useEffect(() => {
+    // keep select valid if options change
+    if (!unitOptions.includes(newUnit)) {
+      setNewUnit(unitOptions[0] ?? "L");
+    }
+  }, [unitOptions, newUnit]);
+
   const sorted = useMemo(() => {
-    const unitOrder: Record<MeasureUnit, number> = { L: 0, KG: 1, EA: 2 };
     return [...(variants ?? [])].sort((a, b) => {
-      const ua = unitOrder[a.unit] ?? 9;
-      const ub = unitOrder[b.unit] ?? 9;
-      if (ua !== ub) return ua - ub;
+      if (a.unit !== b.unit) return String(a.unit).localeCompare(String(b.unit));
       return a.size - b.size;
     });
   }, [variants]);
@@ -629,23 +574,27 @@ function VariantsPanel({
             disabled={disabled}
           />
         </div>
+
         <div className="col-span-3">
           <Label className="text-xs">Unit</Label>
           <Select
             value={newUnit}
-            onValueChange={(v) => setNewUnit(v as MeasureUnit)}
+            onValueChange={(v) => setNewUnit(String(v))}
             disabled={disabled}
           >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="L">L</SelectItem>
-              <SelectItem value="KG">KG</SelectItem>
-              <SelectItem value="EA">EA</SelectItem>
+              {unitOptions.map((u) => (
+                <SelectItem key={u} value={u}>
+                  {u}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
+
         <div className="col-span-5">
           <Label className="text-xs">Price</Label>
           <div className="flex gap-2">
@@ -660,8 +609,8 @@ function VariantsPanel({
               className="gap-2"
               disabled={disabled}
               onClick={async () => {
-                const size = normalizeSize(newSize);
-                const price = normalizeSize(newPrice);
+                const size = normalizeNumber(newSize);
+                const price = normalizeNumber(newPrice);
                 if (!size || !price) {
                   toast.error("Enter size and price");
                   return;
@@ -730,12 +679,13 @@ function VariantRow({
   useEffect(() => {
     setPrice(String(v.price ?? 0));
     setActive(Boolean(v.isActive));
-  }, [v.id]);
+    // ✅ include values too so UI updates even if same id reused
+  }, [v.id, v.price, v.isActive]);
 
   return (
     <div className="p-3 flex items-center gap-3">
       <div className="w-28 text-sm text-slate-200 font-medium">
-        {Number.isInteger(v.size) ? v.size : v.size}
+        {v.size}
         {v.unit}
       </div>
 
@@ -767,7 +717,7 @@ function VariantRow({
             productId,
             size: v.size,
             unit: v.unit,
-            price: normalizeSize(price),
+            price: normalizeNumber(price),
             sku: v.sku ?? null,
             isActive: active,
           })
@@ -788,5 +738,3 @@ function VariantRow({
     </div>
   );
 }
-
-type VariantsPanelProps = React.ComponentProps<typeof VariantsPanel>;

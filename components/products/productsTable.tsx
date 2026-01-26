@@ -17,7 +17,6 @@ import { EditProductDialog } from "../dialogs/edit-product";
 import { ChevronDown, Columns3 } from "lucide-react";
 
 type UsageType = "INTERNAL" | "EXTERNAL" | "BOTH";
-type MeasureUnit = "L" | "KG" | "EA";
 
 type Supplier = {
   id: string;
@@ -28,7 +27,7 @@ type Supplier = {
 type ProductVariant = {
   id: string;
   size: number;
-  unit: MeasureUnit;
+  unit: string;
   price: number;
   isActive: boolean;
 };
@@ -44,8 +43,9 @@ type SupplierProduct = {
 type SpreadRate = {
   id: string;
   consumption: number;
-  unit: MeasureUnit;
+  unit: string;
   perCoat: boolean;
+  notes: string | null;
 };
 
 export type ProductRow = {
@@ -53,12 +53,18 @@ export type ProductRow = {
   name: string;
   shortcut: string | null;
   usageType: UsageType;
+  discountPrice: number | null;
+  createdAt: Date;
+  updatedAt: Date;
   supplierProducts: SupplierProduct[];
   spreadRates: SpreadRate[];
+
+  // ✅ NEW: reliable product unit display (from Product.unit.code)
+  unitCode?: string;
 };
 
 // ---------- helpers ----------
-type VariantKey = { size: number; unit: MeasureUnit };
+type VariantKey = { size: number; unit: string };
 
 function usageBadgeText(t: UsageType) {
   if (t === "BOTH") return "Ext/Int";
@@ -79,26 +85,20 @@ function keyToString(k: VariantKey) {
 }
 
 function sortVariantKeys(a: VariantKey, b: VariantKey) {
-  const unitOrder: Record<MeasureUnit, number> = { L: 0, KG: 1, EA: 2 };
-  const ua = unitOrder[a.unit] ?? 9;
-  const ub = unitOrder[b.unit] ?? 9;
-  if (ua !== ub) return ua - ub;
+  if (a.unit !== b.unit) return a.unit.localeCompare(b.unit);
   return a.size - b.size;
 }
 
-function buildVariantKeysForSupplier(
-  products: ProductRow[],
-  supplierId: string,
-) {
+function buildVariantKeysForSupplier(products: ProductRow[], supplierId: string) {
   const map = new Map<string, VariantKey>();
 
   for (const p of products) {
-    const sp = (p.supplierProducts || []).find(
-      (x) => x.supplierId === supplierId && x.isActive,
+    const sp = (p.supplierProducts ?? []).find(
+      (x) => x.supplierId === supplierId && x.isActive
     );
     if (!sp) continue;
 
-    for (const v of sp.variants || []) {
+    for (const v of sp.variants ?? []) {
       if (!v.isActive) continue;
       if (typeof v.price !== "number") continue;
       map.set(`${v.size}_${v.unit}`, { size: v.size, unit: v.unit });
@@ -109,13 +109,13 @@ function buildVariantKeysForSupplier(
 }
 
 function findPrice(row: ProductRow, supplierId: string, k: VariantKey) {
-  const sp = (row.supplierProducts || []).find(
-    (x) => x.supplierId === supplierId && x.isActive,
+  const sp = (row.supplierProducts ?? []).find(
+    (x) => x.supplierId === supplierId && x.isActive
   );
   if (!sp) return null;
 
-  const v = (sp.variants || []).find(
-    (x) => x.isActive && x.size === k.size && x.unit === k.unit,
+  const v = (sp.variants ?? []).find(
+    (x) => x.isActive && x.size === k.size && x.unit === k.unit
   );
   if (!v) return null;
 
@@ -126,6 +126,10 @@ function productColumnLabel(col: any) {
   if (col.id === "shortcut") return "Shortcut";
   if (col.id === "name") return "Product";
   if (col.id === "usageType") return "Usage";
+  if (col.id === "unit") return "Unit";
+  if (col.id === "discountPrice") return "Discount Price";
+  if (col.id === "createdAt") return "Created";
+  if (col.id === "updatedAt") return "Updated";
   if (col.id === "actions") return "Actions";
   return String(col.id ?? "Column");
 }
@@ -137,54 +141,56 @@ export default function ProductsTable({
   products: ProductRow[];
   suppliers: Supplier[];
 }) {
-  const suppliers = useMemo(() => allSuppliers, [allSuppliers]);
+  const suppliers = useMemo(() => allSuppliers ?? [], [allSuppliers]);
 
-  // Column dropdown moved here
+  // ✅ "All suppliers" option so products never disappear
+  const ALL = "__ALL__";
+
+  // default supplier: plascon else first supplier else ALL
+  const defaultSupplierId = useMemo(() => {
+    const plascon = suppliers.find((s) => s.name.toLowerCase() === "plascon");
+    if (plascon?.id) return plascon.id;
+    return suppliers[0]?.id ?? ALL;
+  }, [suppliers]);
+
+  // ✅ clean supplierId init
+  const [supplierId, setSupplierId] = useState<string>(ALL);
+  useEffect(() => {
+    setSupplierId(defaultSupplierId);
+  }, [defaultSupplierId]);
+
+  const [search, setSearch] = useState("");
+
+  // Column dropdown
   const tableRef = useRef<Table<ProductRow> | null>(null);
   const [columnsDropdownOpen, setColumnsDropdownOpen] = useState(false);
 
-  // ✅ only these appear in dropdown
-  const columnAllowList = useMemo(() => ["shortcut", "name", "usageType"], []);
+  const columnAllowList = useMemo(
+    () => ["shortcut", "name", "usageType", "unit", "discountPrice", "createdAt", "updatedAt"],
+    []
+  );
   const lockColumns = ["actions"];
   const storageKey = "products-table";
 
-  // default supplier
-  const defaultSupplierId = useMemo(() => {
-    const plascon = suppliers.find((s) => s.name.toLowerCase() === "plascon");
-    return plascon ? plascon.id : suppliers[0]?.id || "";
-  }, [suppliers]);
-
-  const [supplierId, setSupplierId] = useState<string>(() => defaultSupplierId);
-  const [search, setSearch] = useState("");
-
-  useEffect(() => {
-    if (Array.isArray(suppliers) && suppliers.length > 0) {
-      if (!suppliers.some((s) => s.id === supplierId)) {
-        setSupplierId(defaultSupplierId);
-      }
-    } else if (supplierId) {
-      setSupplierId("");
-    }
-  }, [suppliers, supplierId, defaultSupplierId]);
-
-  useEffect(() => {
-    if (!suppliers?.length) return;
-    if (!supplierId) setSupplierId(suppliers[0].id);
-    const exists = suppliers.some((s) => s.id === supplierId);
-    if (!exists) setSupplierId(suppliers[0].id);
-  }, [suppliers, supplierId]);
-
   const variantKeys = useMemo(() => {
-    if (!supplierId) return [];
+    if (!supplierId || supplierId === ALL) return [];
     return buildVariantKeysForSupplier(products, supplierId);
   }, [products, supplierId]);
 
+  // ✅ FIX: filtering no longer empties table when supplierProducts is empty
   const filteredProducts = useMemo(() => {
-    let filtered = supplierId
-      ? products.filter((p) =>
-          (p.supplierProducts || []).some((sp) => sp.supplierId === supplierId),
-        )
-      : products;
+    let filtered = products ?? [];
+
+    if (supplierId && supplierId !== ALL) {
+      filtered = filtered.filter((p) => {
+        const links = p.supplierProducts ?? [];
+
+        // if product not linked to any supplier yet → still show it
+        if (links.length === 0) return true;
+
+        return links.some((sp) => sp.supplierId === supplierId && sp.isActive);
+      });
+    }
 
     const q = search.trim().toLowerCase();
     if (!q) return filtered;
@@ -192,15 +198,14 @@ export default function ProductsTable({
     return filtered.filter((p) => {
       if (p.name?.toLowerCase().includes(q)) return true;
       if (p.shortcut?.toLowerCase().includes(q)) return true;
-      if (
-        (p.supplierProducts || []).some((sp) =>
-          sp.supplier?.name?.toLowerCase().includes(q),
-        )
-      )
+      if ((p.supplierProducts ?? []).some((sp) => sp.supplier?.name?.toLowerCase().includes(q)))
         return true;
       return false;
     });
   }, [products, supplierId, search]);
+
+  const [editProductId, setEditProductId] = useState<string | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const columns = useMemo<ColumnDef<ProductRow>[]>(() => {
     const base: ColumnDef<ProductRow>[] = [
@@ -213,7 +218,7 @@ export default function ProductsTable({
         ),
         cell: ({ row }) => (
           <span className="font-mono text-sm font-medium">
-            {row.original.shortcut || "missing"}
+            {row.original.shortcut || "—"}
           </span>
         ),
       },
@@ -221,7 +226,7 @@ export default function ProductsTable({
         accessorKey: "name",
         header: () => (
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Product
+            Product Name
           </span>
         ),
         cell: ({ row }) => (
@@ -237,16 +242,74 @@ export default function ProductsTable({
         accessorKey: "usageType",
         header: () => (
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Usage
+            Usage Type
           </span>
         ),
         cell: ({ row }) => (
           <span
             className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${usageBadgeStyle(
-              row.original.usageType,
+              row.original.usageType
             )}`}
           >
             {usageBadgeText(row.original.usageType)}
+          </span>
+        ),
+      },
+      {
+        id: "unit",
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Unit
+          </span>
+        ),
+        // ✅ FIX: show product unit code reliably
+        cell: ({ row }) => (
+          <span className="text-sm">{row.original.unitCode || "—"}</span>
+        ),
+      },
+      {
+        accessorKey: "discountPrice",
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Discount Price
+          </span>
+        ),
+        cell: ({ row }) =>
+          row.original.discountPrice != null ? (
+            <span className="text-sm font-medium text-emerald-400">
+              {formatCurrency(row.original.discountPrice)}
+            </span>
+          ) : (
+            <span className="text-slate-500">—</span>
+          ),
+      },
+      {
+        accessorKey: "createdAt",
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Created At
+          </span>
+        ),
+        cell: ({ row }) => (
+          <span className="text-xs text-slate-400">
+            {row.original.createdAt
+              ? new Date(row.original.createdAt).toLocaleDateString()
+              : "—"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "updatedAt",
+        header: () => (
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Updated At
+          </span>
+        ),
+        cell: ({ row }) => (
+          <span className="text-xs text-slate-400">
+            {row.original.updatedAt
+              ? new Date(row.original.updatedAt).toLocaleDateString()
+              : "—"}
           </span>
         ),
       },
@@ -260,14 +323,14 @@ export default function ProductsTable({
         </span>
       ),
       cell: ({ row }) => {
-        if (!supplierId) return <span className="text-slate-500">—</span>;
+        if (!supplierId || supplierId === ALL) return <span className="text-slate-500">—</span>;
         const price = findPrice(row.original, supplierId, k);
         return price ? (
-          <span className="font-semibold text-emerald-400">
+          <span className="font-semibold text-emerald-400 text-sm">
             {formatCurrency(price)}
           </span>
         ) : (
-          ""
+          <span className="text-slate-600">—</span>
         );
       },
     }));
@@ -310,21 +373,19 @@ export default function ProductsTable({
   const canReset =
     typeof window !== "undefined" && !!window.localStorage.getItem(storageKey);
 
-  const [editProductId, setEditProductId] = useState<string | null>(null);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-
   return (
     <div className="space-y-4">
       {/* Header Controls */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        {/* Left controls */}
+        {/* Supplier */}
         <div className="flex-1">
           <Select value={supplierId} onValueChange={setSupplierId}>
             <SelectTrigger className="text-muted-foreground">
               <SelectValue placeholder="Select supplier..." />
             </SelectTrigger>
             <SelectContent>
-              {suppliers?.map((s) => (
+              <SelectItem value={ALL}>All suppliers</SelectItem>
+              {suppliers.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
                   {s.name}
                 </SelectItem>
@@ -333,19 +394,18 @@ export default function ProductsTable({
           </Select>
         </div>
 
-        {/* Right controls */}
-
+        {/* Search */}
         <div className="flex-1">
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search products..."
-            className=""
           />
         </div>
 
-        {/* right side */}
+        {/* Right side */}
         <div className="flex items-center justify-between gap-2">
+          {/* Columns dropdown */}
           <div className="relative">
             <button
               onClick={() => setColumnsDropdownOpen(!columnsDropdownOpen)}
@@ -353,7 +413,7 @@ export default function ProductsTable({
               type="button"
             >
               <Columns3 className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="">Columns</span>
+              <span>Columns</span>
               <ChevronDown className="h-3 w-3 sm:h-4 sm:w-4" />
             </button>
 
@@ -373,9 +433,7 @@ export default function ProductsTable({
                     <div className="max-h-[60vh] overflow-y-auto">
                       {(tableRef.current?.getAllLeafColumns?.() ?? [])
                         .filter((c: any) => c.getCanHide?.() !== false)
-                        .filter((c: any) =>
-                          columnAllowList.includes(String(c.id)),
-                        )
+                        .filter((c: any) => columnAllowList.includes(String(c.id)))
                         .map((col: any) => {
                           const isLocked = lockColumns.includes(col.id);
                           return (
@@ -390,8 +448,7 @@ export default function ProductsTable({
                                 checked={col.getIsVisible()}
                                 disabled={isLocked}
                                 onChange={(e) => {
-                                  if (!isLocked)
-                                    col.toggleVisibility(e.target.checked);
+                                  if (!isLocked) col.toggleVisibility(e.target.checked);
                                 }}
                                 className="h-4 w-4 rounded border-slate-600 bg-slate-800 text-sky-600"
                               />
@@ -423,14 +480,12 @@ export default function ProductsTable({
             )}
           </div>
 
-          <div className="">
-            <CreateProductDialog />
-          </div>
+         <div className=""> <CreateProductDialog /></div>
         </div>
       </div>
 
       {/* Table */}
-      <div className=" overflow-hidden">
+      <div className="overflow-hidden">
         <DataTable<ProductRow>
           data={filteredProducts}
           columns={columns}
@@ -441,6 +496,7 @@ export default function ProductsTable({
           pageSizeOptions={[5, 10, 20, 50, 100]}
         />
       </div>
+
       <EditProductDialog
         productId={editProductId}
         open={editDialogOpen}

@@ -1,8 +1,9 @@
-import { getAllJobs } from "@/actions/job";
+
+import { getAllJobsDTO } from "@/actions/job";
 import JobsDataTable, { type JobRow } from "@/components/jobs/jobs-data-table";
 
 export default async function JobsPage() {
-  const result = await getAllJobs();
+  const result = await getAllJobsDTO();
 
   const jobs: JobRow[] = (result.data || []).map((job: any) => ({
     id: job.id,

@@ -18,7 +18,7 @@ export type OrderWithRelations = Prisma.OrderGetPayload<{
       include: {
         product: true;
         supplier: true;
-        variant: true;
+        productOption: { include: { option: { include: { unit: true } } } };
       };
     };
   };
@@ -27,7 +27,7 @@ export type OrderWithRelations = Prisma.OrderGetPayload<{
 type CreateOrderItemInput = {
   productId: string;
   supplierId: string;
-  variantId: string;
+  productOptionId: string;
   quantity: number; // UI sends number, server converts to Decimal
 };
 
@@ -162,10 +162,10 @@ export async function createOrderForJob(input: CreateOrderInput) {
   }
 
   for (const [i, it] of input.items.entries()) {
-    if (!it.productId || !it.supplierId || !it.variantId) {
+    if (!it.productId || !it.supplierId || !it.productOptionId) {
       return {
         success: false as const,
-        error: `Item ${i + 1}: productId, supplierId, variantId are required`,
+        error: `Item ${i + 1}: productId, supplierId, productOptionId are required`,
       };
     }
     try {
@@ -184,39 +184,44 @@ export async function createOrderForJob(input: CreateOrderInput) {
       });
       if (!job) throw new Error("Job not found");
 
-      // fetch variants (authoritative prices)
-      const variantIds = [...new Set(input.items.map((x) => x.variantId))];
-      const variants = await tx.productVariant.findMany({
-        where: { id: { in: variantIds } },
+      // fetch supplier prices (authoritative)
+      const productOptionIds = [...new Set(input.items.map((x) => x.productOptionId))];
+      const prices = await tx.supplierVariantPrice.findMany({
+        where: {
+          supplierId: { in: input.items.map((x) => x.supplierId) },
+          productOptionId: { in: productOptionIds },
+        },
         select: {
           id: true,
-          price: true, // Decimal
+          price: true,
           supplierId: true,
           productId: true,
+          productOptionId: true,
           isActive: true,
         },
       });
-      const variantById = new Map(variants.map((v) => [v.id, v]));
+      const priceByKey = new Map(prices.map((p) => [`${p.supplierId}_${p.productOptionId}`, p]));
 
       // prepare items w/ server pricing
       const prepared = input.items.map((it, idx) => {
-        const v = variantById.get(it.variantId);
-        if (!v) throw new Error(`Item ${idx + 1}: variant not found`);
-        if (!v.isActive)
-          throw new Error(`Item ${idx + 1}: variant is inactive`);
-        if (v.supplierId !== it.supplierId)
-          throw new Error(`Item ${idx + 1}: supplierId does not match variant`);
-        if (v.productId !== it.productId)
-          throw new Error(`Item ${idx + 1}: productId does not match variant`);
+        const key = `${it.supplierId}_${it.productOptionId}`;
+        const p = priceByKey.get(key);
+        if (!p) throw new Error(`Item ${idx + 1}: supplier price not found`);
+        if (!p.isActive)
+          throw new Error(`Item ${idx + 1}: supplier price is inactive`);
+        if (p.supplierId !== it.supplierId)
+          throw new Error(`Item ${idx + 1}: supplierId does not match price`);
+        if (p.productId !== it.productId)
+          throw new Error(`Item ${idx + 1}: productId does not match price`);
 
         const qty = D(it.quantity);
-        const unitPrice = v.price;
+        const unitPrice = p.price;
         const lineTotal = money(qty.mul(unitPrice));
 
         return {
           productId: it.productId,
           supplierId: it.supplierId,
-          variantId: it.variantId,
+          productOptionId: it.productOptionId,
           quantity: qty,
           unitPrice,
           lineTotal,
@@ -248,7 +253,7 @@ export async function createOrderForJob(input: CreateOrderInput) {
           orderId: order.id,
           productId: x.productId,
           supplierId: x.supplierId,
-          variantId: x.variantId,
+          productOptionId: x.productOptionId,
           quantity: x.quantity,
           unitPrice: x.unitPrice,
           lineTotal: x.lineTotal,
@@ -314,7 +319,7 @@ export async function getAllOrders(): Promise<GetAllOrdersResult> {
     const orders = await prisma.order.findMany({
       include: {
         job: { include: { supplier: true } },
-        items: { include: { product: true, supplier: true, variant: true } },
+        items: { include: { product: true, supplier: true, productOption: { include: { option: { include: { unit: true } } } } } },
       },
       orderBy: { createdAt: "desc" },
     });

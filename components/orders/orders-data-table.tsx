@@ -285,7 +285,7 @@ export function OrdersDataTable({
               </>
             )}
           </div>
-          <CreateOrderDialog />
+          <CreateOrderDialog jobId={""} />
         </div>
       </header>
       <div className=" w-full">

@@ -30,55 +30,41 @@ export async function searchVariantsAction(input: {
     };
 
   // We page by variant.id (stable)
-  const rows = await prisma.productVariant.findMany({
+  const rows = await prisma.productOption.findMany({
     take: take + 1,
     ...(input.cursor ? { skip: 1, cursor: { id: input.cursor } } : {}),
     where: {
       isActive: true,
       OR: [
-        { sku: { contains: q, mode: "insensitive" } },
         {
-          supplierProduct: {
-            product: { name: { contains: q, mode: "insensitive" } },
-          },
+          product: { name: { contains: q, mode: "insensitive" } },
         },
         {
-          supplierProduct: {
-            supplier: { name: { contains: q, mode: "insensitive" } },
-          },
+          option: { value: { equals: Number(q) } },
         },
       ],
     },
     select: {
       id: true,
-      size: true,
-      unit: true,
-      price: true,
-      sku: true,
       productId: true,
-      supplierId: true,
-      supplierProduct: {
-        select: {
-          product: { select: { name: true } },
-          supplier: { select: { name: true } },
-        },
-      },
+      option: { select: { value: true, unit: true } },
+      product: { select: { name: true } },
     },
     orderBy: { id: "asc" },
   });
 
   const nextCursor = rows.length > take ? rows[take].id : null;
 
-  const data: VariantSearchRow[] = rows.slice(0, take).map((r) => ({
+  const data: VariantSearchRow[] = rows.slice(0, take).map((r: any) => ({
     id: r.id,
     productId: r.productId,
-    supplierId: r.supplierId,
-    productName: r.supplierProduct.product.name,
-    supplierName: r.supplierProduct.supplier.name,
-    size: r.size,
-    unit: String(r.unit),
-    price: r.price.toString(),
-    sku: r.sku,
+    supplierId: '', // Not available in productOption
+    productName: r.product.name,
+    supplierName: '', // Not available in productOption
+    size: r.option.value,
+    unit: String(r.option.unit),
+    price: '', // Not available in productOption
+    sku: '', // Not available in productOption
   }));
 
   return { success: true as const, data, nextCursor };

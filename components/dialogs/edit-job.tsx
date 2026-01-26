@@ -51,7 +51,6 @@ import { cn } from "@/lib/utils";
 
 import { getManagers } from "@/actions/manager";
 import { getSuppliers } from "@/actions/supplier";
-import { getJobById, updateJob } from "@/actions/job";
 import { getProducts } from "@/actions/product";
 import { bulkUpdateJobProducts } from "@/actions/job-product";
 import {
@@ -60,6 +59,7 @@ import {
 } from "@/actions/variant-search";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { Checkbox } from "@/components/ui/checkbox";
+import { getJobByIdDTO, updateJob } from "@/actions/job";
 
 interface EditJobDialogProps {
   jobId: string | null;
@@ -143,9 +143,11 @@ export function EditJobDialog({
   const [managers, setManagers] = useState<Manager[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
-  const [jobNumber, setJobNumber] = useState("");
-  const [siteName, setSiteName] = useState("");
-  const [client, setClient] = useState("");
+
+  // Always provide defaults for all fields
+  const [jobNumber, setJobNumber] = useState<string>("");
+  const [siteName, setSiteName] = useState<string>("");
+  const [client, setClient] = useState<string>("");
 
   const [managerId, setManagerId] = useState<string>("");
   const [managerNameRaw, setManagerNameRaw] = useState<string>("");
@@ -156,21 +158,26 @@ export function EditJobDialog({
   const [specPdfUrl, setSpecPdfUrl] = useState<string | null>(null);
   const [boqPdfUrl, setBoqPdfUrl] = useState<string | null>(null);
 
-  const [specNotRequired, setSpecNotRequired] = useState(false);
-  const [boqNotRequired, setBoqNotRequired] = useState(false);
-  const [safetyFileNotRequired, setSafetyFileNotRequired] = useState(false);
+  const [specNotRequired, setSpecNotRequired] = useState<boolean>(false);
+  const [boqNotRequired, setBoqNotRequired] = useState<boolean>(false);
+  const [safetyFileNotRequired, setSafetyFileNotRequired] = useState<boolean>(false);
 
   // ✅ safety received boolean
-  const [safetyFileReceived, setSafetyFileReceived] = useState(false);
+  const [safetyFileReceived, setSafetyFileReceived] = useState<boolean>(false);
 
   const [specFileName, setSpecFileName] = useState<string | null>(null);
   const [boqFileName, setBoqFileName] = useState<string | null>(null);
 
-  const [specUploading, setSpecUploading] = useState(false);
-  const [boqUploading, setBoqUploading] = useState(false);
+  const [specUploading, setSpecUploading] = useState<boolean>(false);
+  const [boqUploading, setBoqUploading] = useState<boolean>(false);
 
   const [jobProducts, setJobProducts] = useState<JobProductDraft[]>([]);
   const [allProducts, setAllProducts] = useState<ProductLite[]>([]);
+
+  // Job number edit confirmation
+  const [jobNumberEditMode, setJobNumberEditMode] = useState(false);
+  const [showJobNumberConfirm, setShowJobNumberConfirm] = useState(false);
+  const [pendingJobNumber, setPendingJobNumber] = useState<string>("");
 
   // Variant picker
   const [variantPickerOpen, setVariantPickerOpen] = useState(false);
@@ -255,7 +262,7 @@ export function EditJobDialog({
     (async () => {
       setInitialLoading(true);
       try {
-        const res = await getJobById(jobId);
+        const res = await getJobByIdDTO(jobId);
         if (cancelled) return;
 
         if (!res?.success || !res?.data) {
@@ -263,9 +270,28 @@ export function EditJobDialog({
           return;
         }
 
-        const j = res.data as JobDTO;
+        // Map JobRowDTO to JobDTO, filling missing fields with null/defaults
+        const row = res.data as any;
+        const j: JobDTO = {
+          id: row.id,
+          jobNumber: row.jobNumber,
+          siteName: row.siteName,
+          client: row.client ?? null,
+          managerId: row.manager?.id ?? null,
+          managerNameRaw: row.manager?.name ?? null,
+          supplierId: row.supplier?.id ?? null,
+          specPdfUrl: row.specPdfUrl ?? null,
+          boqPdfUrl: row.boqPdfUrl ?? null,
+          specNotRequired: row.specNotRequired ?? false,
+          boqNotRequired: row.boqNotRequired ?? false,
+          safetyFileNotRequired: row.safetyFileNotRequired ?? false,
+          safetyFile: row.safetyFile ?? false,
+          specsReceived: row.specsReceived ?? false,
+          jobProducts: row.jobProducts ?? [],
+        };
 
         setJobNumber(j.jobNumber ?? "");
+        setPendingJobNumber(j.jobNumber ?? "");
         setSiteName(j.siteName ?? "");
         setClient(j.client ?? "");
         setManagerId(j.managerId ?? "");
@@ -516,17 +542,76 @@ export function EditJobDialog({
                 </h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
                   <div className="space-y-2">
                     <Label htmlFor="job-number">
                       Job Number <span className="text-destructive">*</span>
                     </Label>
-                    <Input
-                      id="job-number"
-                      placeholder="e.g., 5962"
-                      value={jobNumber}
-                      onChange={(e) => setJobNumber(e.target.value)}
-                      disabled={loading}
-                    />
+                    <div className="flex gap-2 items-center">
+                      <Input
+                        id="job-number"
+                        placeholder="e.g., 5962"
+                        value={jobNumberEditMode ? pendingJobNumber : jobNumber}
+                        onChange={(e) => setPendingJobNumber(e.target.value)}
+                        disabled={loading || !jobNumberEditMode}
+                      />
+                      {!jobNumberEditMode ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setShowJobNumberConfirm(true)}
+                          disabled={loading}
+                        >
+                          Edit
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            setJobNumber(pendingJobNumber);
+                            setJobNumberEditMode(false);
+                          }}
+                          disabled={loading}
+                        >
+                          Save
+                        </Button>
+                      )}
+                    </div>
+                    {/* Confirmation Dialog */}
+                    {showJobNumberConfirm && (
+                      <Dialog open={showJobNumberConfirm} onOpenChange={setShowJobNumberConfirm}>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Confirm Edit</DialogTitle>
+                            <DialogDescription>
+                              Are you sure you want to edit the job number? This may affect job tracking and reporting.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="flex gap-2 justify-end mt-4">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => setShowJobNumberConfirm(false)}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              onClick={() => {
+                                setJobNumberEditMode(true);
+                                setShowJobNumberConfirm(false);
+                              }}
+                            >
+                              Yes, Edit
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    )}
                   </div>
 
                   <div className="space-y-2">

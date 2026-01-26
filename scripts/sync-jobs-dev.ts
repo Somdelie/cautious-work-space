@@ -1,6 +1,6 @@
 // scripts/sync-jobs-dev.ts
 import "dotenv/config";
-import { syncJobsFromExcel } from "@/lib/excel/jobSync";
+import { syncJobsFromExcel } from "../lib/index";
 
 async function main() {
   const filePath = process.env.EXCEL_JOBS_PATH;

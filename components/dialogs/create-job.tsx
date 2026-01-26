@@ -132,9 +132,6 @@ export function CreateJobDialog({ onSuccess }: CreateJobDialogProps) {
         managerId: managerId || undefined,
 
         supplierId: supplierId || undefined,
-
-        specPdfUrl: specPdfUrl ?? undefined,
-        boqPdfUrl: boqPdfUrl ?? undefined,
       });
 
       if (!res.success) {

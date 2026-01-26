@@ -25,7 +25,6 @@ export type JobRowDTO = {
   safetyFile: boolean;
   safetyFileNotRequired: boolean;
 
-  // ✅ NEW
   totalActualCost: number;
 
   createdAt: string; // ISO (client safe)
@@ -47,7 +46,7 @@ export async function getJobsForTable(): Promise<{
         isStarted: true,
         isFinished: true,
 
-        specsReceived: true,
+        specPdfUrl: true,
         specNotRequired: true,
 
         boqNotRequired: true,
@@ -63,16 +62,11 @@ export async function getJobsForTable(): Promise<{
         manager: { select: { id: true, name: true } },
         supplier: { select: { id: true, name: true } },
 
-        // ✅ your schema currently has jobCostSummaries: JobCostSummary[]
-        jobCostSummaries: {
-          select: { totalActual: true },
-          take: 1,
-        },
+        jobCostSummary: { select: { totalActual: true } },
       },
       orderBy: { createdAt: "desc" },
     });
 
-    // keep your “ongoing first” sorting
     const sorted = [...jobs].sort((a, b) => {
       const aOngoing = a.isStarted && !a.isFinished;
       const bOngoing = b.isStarted && !b.isFinished;
@@ -82,7 +76,8 @@ export async function getJobsForTable(): Promise<{
     });
 
     const data: JobRowDTO[] = sorted.map((j) => {
-      const totalActual = j.jobCostSummaries?.[0]?.totalActual;
+      const totalActual = j.jobCostSummary?.totalActual;
+
       return {
         id: j.id,
         jobNumber: j.jobNumber,
@@ -90,14 +85,12 @@ export async function getJobsForTable(): Promise<{
         client: j.client ?? null,
 
         manager: j.manager ? { id: j.manager.id, name: j.manager.name } : null,
-        supplier: j.supplier
-          ? { id: j.supplier.id, name: j.supplier.name }
-          : null,
+        supplier: j.supplier ? { id: j.supplier.id, name: j.supplier.name } : null,
 
         isStarted: j.isStarted,
         isFinished: j.isFinished,
 
-        specsReceived: j.specsReceived,
+        specsReceived: Boolean(j.specPdfUrl),
         specNotRequired: j.specNotRequired,
 
         boqNotRequired: j.boqNotRequired,

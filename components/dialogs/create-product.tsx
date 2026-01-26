@@ -22,21 +22,39 @@ import {
 } from "@/components/ui/select";
 import { Plus, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+
 import { getSuppliers } from "@/actions/supplier";
-import { createProduct } from "@/actions/product"; // ✅ NEW action
+import { getUnits } from "@/actions/unit";
+
+// ✅ NEW schema actions (Unit + Option + supplier price)
+import { createProduct } from "@/actions/product";
+import { addOptionToProduct, createProductOption, setSupplierPriceForProductOption } from "@/actions/variant";
+
 
 type UsageType = "INTERNAL" | "EXTERNAL" | "BOTH";
-type MeasureUnit = "L" | "KG" | "EA";
 
 interface Supplier {
   id: string;
   name: string;
 }
 
-type VariantDraft = {
-  size: string; // keep as string for input
-  unit: MeasureUnit;
-  price: string; // keep as string for input
+interface Unit {
+  id: string;
+  code: string;
+  name: string;
+}
+
+/**
+ * NEW schema meaning:
+ * - value + unitCode => ProductOption (global)
+ * - attach option to product => ProductProductOption (join) => productOptionId
+ * - set supplier price for productOptionId => SupplierVariantPrice
+ */
+type OptionDraft = {
+  value: string; // input string
+  unitId: string; // selected unit ID
+  label: string; // optional display label
+  price: string; // supplier price for that option
 };
 
 interface CreateProductDialogProps {
@@ -52,6 +70,7 @@ export function CreateProductDialog({
   const [loading, setLoading] = useState(false);
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
   const [selectedSupplierId, setSelectedSupplierId] = useState(
     supplierId ?? "",
   );
@@ -59,56 +78,76 @@ export function CreateProductDialog({
   const [name, setName] = useState("");
   const [shortcut, setShortcut] = useState("");
   const [usageType, setUsageType] = useState<UsageType>("BOTH");
+  const [productUnitId, setProductUnitId] = useState("");
+  const [discountPrice, setDiscountPrice] = useState<string>("");
 
-  const [variants, setVariants] = useState<VariantDraft[]>([
-    { size: "20", unit: "L", price: "" },
-    { size: "5", unit: "L", price: "" },
+  // ✅ options/prices for supplier (replaces old variants array)
+  const [options, setOptions] = useState<OptionDraft[]>([
+    { value: "24", unitId: "", label: "", price: "" },
+    { value: "36", unitId: "", label: "", price: "" },
   ]);
 
   useEffect(() => {
-    const fetchSuppliers = async () => {
-      const res = await getSuppliers();
-      if (res.success && res.data) setSuppliers(res.data);
+    const fetchData = async () => {
+      const [suppliersRes, unitsRes] = await Promise.all([
+        getSuppliers(),
+        getUnits(),
+      ]);
+      
+      if (suppliersRes.success && suppliersRes.data) {
+        setSuppliers(suppliersRes.data);
+      }
+      
+      if (unitsRes.success && unitsRes.data) {
+        setUnits(unitsRes.data);
+        // Set default unit to first unit (usually MM)
+        if (unitsRes.data.length > 0) {
+          const defaultUnitId = unitsRes.data[0].id;
+          setProductUnitId(defaultUnitId);
+          setOptions(prev => prev.map(opt => ({ ...opt, unitId: defaultUnitId })));
+        }
+      }
     };
-    fetchSuppliers();
+    fetchData();
   }, []);
 
-  // keep supplierId in sync when passed from a page
   useEffect(() => {
     if (supplierId) setSelectedSupplierId(supplierId);
   }, [supplierId]);
 
   const supplierOptions = useMemo(() => suppliers, [suppliers]);
+  const unitOptions = useMemo(() => units, [units]);
 
   function resetForm() {
     setName("");
     setShortcut("");
     setUsageType("BOTH");
     setSelectedSupplierId(supplierId ?? "");
-    setVariants([
-      { size: "20", unit: "L", price: "" },
-      { size: "5", unit: "L", price: "" },
+    const defaultUnitId = units.length > 0 ? units[0].id : "";
+    setProductUnitId(defaultUnitId);
+    setOptions([
+      { value: "24", unitId: defaultUnitId, label: "", price: "" },
+      { value: "36", unitId: defaultUnitId, label: "", price: "" },
     ]);
   }
 
-  function addVariantRow() {
-    setVariants((prev) => [...prev, { size: "", unit: "L", price: "" }]);
+  function addRow() {
+    const defaultUnitId = units.length > 0 ? units[0].id : "";
+    setOptions((prev) => [...prev, { value: "", unitId: defaultUnitId, label: "", price: "" }]);
   }
 
-  function removeVariantRow(index: number) {
-    setVariants((prev) => prev.filter((_, i) => i !== index));
+  function removeRow(index: number) {
+    setOptions((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function updateVariant(index: number, patch: Partial<VariantDraft>) {
-    setVariants((prev) =>
+  function updateRow(index: number, patch: Partial<OptionDraft>) {
+    setOptions((prev) =>
       prev.map((v, i) => (i === index ? { ...v, ...patch } : v)),
     );
   }
 
   // Accepts a flag to keep dialog open for bulk add
-  const handleSubmit = async (e: React.FormEvent, keepOpen = false) => {
-    if (e) e.preventDefault();
-
+  const handleSubmit = async (keepOpen = false) => {
     if (!name.trim()) {
       toast.error("Please enter a product name");
       return;
@@ -119,58 +158,116 @@ export function CreateProductDialog({
       return;
     }
 
-    // sanitize variants: only keep rows with a valid size + price
-    const cleanVariants = variants
-      .map((v) => {
-        const size = Number(v.size);
-        const price = Number(v.price);
+    if (!productUnitId) {
+      toast.error("Please select a product unit");
+      return;
+    }
 
-        if (!Number.isFinite(size) || size <= 0) return null;
+    // sanitize option rows: need (value + unitId + price)
+    const clean = options
+      .map((o) => {
+        const value = Number(o.value);
+        const unitId = o.unitId?.trim();
+        const price = Number(o.price);
+        const label = o.label?.trim() || null;
+
+        if (!Number.isFinite(value) || value <= 0) return null;
+        if (!unitId) return null;
         if (!Number.isFinite(price) || price <= 0) return null;
 
-        return { size, unit: v.unit, price };
+        return { value, unitId, price, label };
       })
       .filter(Boolean) as Array<{
-      size: number;
-      unit: MeasureUnit;
+      value: number;
+      unitId: string;
       price: number;
+      label: string | null;
     }>;
 
-    if (cleanVariants.length === 0) {
-      toast.error("Add at least one valid variant (size + price)");
+    if (clean.length === 0) {
+      toast.error("Add at least one valid option (value + unit + price)");
       return;
     }
 
     setLoading(true);
     try {
-      const res = await createProduct({
+      // 1) create product
+      const pRes = await createProduct({
         name: name.trim(),
         shortcut: shortcut.trim() || null,
         usageType,
-        supplierId: selectedSupplierId,
-        variants: cleanVariants,
+        unitId: productUnitId,
+        discountPrice: discountPrice !== "" ? Number(discountPrice) : undefined,
       });
 
-      if (!res.success) {
-        toast.error(
-          typeof res.error === "string"
-            ? res.error
-            : "Failed to create product",
-        );
+      if (!pRes.success || !pRes.data) {
+        if (typeof pRes.error === "string") {
+          toast.error(pRes.error);
+        } else {
+          toast.error(pRes.error?.message || "Failed to create product❗");
+        }
         return;
       }
 
-      toast.success("Product created");
+      const productId = pRes.data.id;
+
+      // 2) for each option:
+      // - ensure ProductOption (global) exists
+      // - attach to product (join id = productOptionId)
+      // - set supplier price for that productOptionId
+      for (const row of clean) {
+        // ensure global option
+        const unit = units.find(u => u.id === row.unitId);
+        const optRes = await createProductOption({
+          value: row.value,
+          unitCode: unit?.code || "",
+          unitName: unit?.name || null,
+          label: row.label,
+        });
+
+        if (!optRes.success || !optRes.data) {
+          toast.error(optRes.error || `Failed to create option ${row.value}`);
+          continue;
+        }
+
+        // attach option to product (returns join id)
+        const attachRes = await addOptionToProduct({
+          productId,
+          optionId: optRes.data.id,
+        });
+
+        if (!attachRes.success || !attachRes.data) {
+          const unitCode = units.find(u => u.id === row.unitId)?.code || '';
+          toast.error(attachRes.error || `Failed to attach ${row.value}${unitCode} to product`);
+          continue;
+        }
+
+        const productOptionId = attachRes.data.id;
+
+        // set supplier-specific price
+        const priceRes = await setSupplierPriceForProductOption({
+          supplierId: selectedSupplierId,
+          productId,
+          productOptionId,
+          unitPrice: row.price,
+          isActive: true,
+        });
+
+        if (!priceRes.success) {
+          const unitCode = units.find(u => u.id === row.unitId)?.code || '';
+          toast.error(priceRes.error || `Failed to set price for ${row.value}${unitCode}`);
+        }
+      }
+
+      toast.success(`product "${pRes.data.name}" created successfully`);
       resetForm();
+      setDiscountPrice("");
+      onSuccess?.();
       if (!keepOpen) {
         setOpen(false);
-        onSuccess?.();
-      } else {
-        // Optionally call onSuccess for live update
-        onSuccess?.();
       }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Unexpected error");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Unexpected error");
     } finally {
       setLoading(false);
     }
@@ -191,19 +288,16 @@ export function CreateProductDialog({
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-[650px]">
         <DialogHeader>
           <DialogTitle>Create Product</DialogTitle>
           <DialogDescription>
-            Create a product, link it to a supplier, then add priced variants
-            (e.g. 20L, 5L, 25KG).
+            Create a product, choose a supplier, then add options (e.g. 24MM, 36MM)
+            with supplier prices.
           </DialogDescription>
         </DialogHeader>
 
-        <form
-          onSubmit={(e) => handleSubmit(e, false)}
-          className="space-y-4 max-h-[75vh] overflow-y-auto pr-2"
-        >
+        <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-2">
           {/* Supplier */}
           <div className="space-y-2">
             <Label htmlFor="supplier">Supplier *</Label>
@@ -234,7 +328,7 @@ export function CreateProductDialog({
               <Label htmlFor="shortcut">Shortcut</Label>
               <Input
                 id="shortcut"
-                placeholder="e.g. PGS1"
+                placeholder="e.g. MT"
                 value={shortcut}
                 onChange={(e) => setShortcut(e.target.value)}
                 disabled={loading}
@@ -267,45 +361,80 @@ export function CreateProductDialog({
             <Label htmlFor="name">Product Name *</Label>
             <Input
               id="name"
-              placeholder="e.g. Professional Elastoshield"
+              placeholder="e.g. Masking Tape"
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={loading}
             />
           </div>
 
-          {/* Variants */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="productUnit">Product Unit *</Label>
+              <Select
+                value={productUnitId}
+                onValueChange={setProductUnitId}
+                disabled={loading}
+              >
+                <SelectTrigger
+                  id="productUnit"
+                  className="bg-slate-900 border-slate-800"
+                >
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {unitOptions.map((unit) => (
+                    <SelectItem key={unit.id} value={unit.id}>
+                      {unit.code} - {unit.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="discountPrice">Discount Price</Label>
+              <Input
+                id="discountPrice"
+                placeholder="e.g. 19.99"
+                value={discountPrice}
+                onChange={(e) => setDiscountPrice(e.target.value)}
+                disabled={loading}
+                inputMode="decimal"
+              />
+            </div>
+          </div>
+
+          {/* Options + supplier prices */}
           <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-slate-100">
-                  Variants & Prices
+                  Options & Supplier Prices
                 </p>
                 <p className="text-xs text-slate-400">
-                  Add sizes like 20L / 5L / 25KG, each with a price.
+                  Add option value + unit (like 24MM) and the supplier price.
                 </p>
               </div>
               <Button
                 type="button"
                 variant="outline"
-                onClick={addVariantRow}
+                onClick={addRow}
                 disabled={loading}
               >
-                + Add variant
+                + Add option
               </Button>
             </div>
 
             <div className="space-y-2">
-              {variants.map((v, idx) => (
+              {options.map((o, idx) => (
                 <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-4">
-                    <Label className="text-xs text-slate-400">Size</Label>
+                  <div className="col-span-3">
+                    <Label className="text-xs text-slate-400">Value</Label>
                     <Input
-                      value={v.size}
-                      onChange={(e) =>
-                        updateVariant(idx, { size: e.target.value })
-                      }
-                      placeholder="20"
+                      value={o.value}
+                      onChange={(e) => updateRow(idx, { value: e.target.value })}
+                      placeholder="24"
                       disabled={loading}
                       inputMode="decimal"
                       className="bg-slate-900 border-slate-800"
@@ -315,31 +444,40 @@ export function CreateProductDialog({
                   <div className="col-span-3">
                     <Label className="text-xs text-slate-400">Unit</Label>
                     <Select
-                      value={v.unit}
-                      onValueChange={(u) =>
-                        updateVariant(idx, { unit: u as MeasureUnit })
-                      }
+                      value={o.unitId}
+                      onValueChange={(unitId) => updateRow(idx, { unitId })}
                       disabled={loading}
                     >
                       <SelectTrigger className="bg-slate-900 border-slate-800">
-                        <SelectValue />
+                        <SelectValue placeholder="Select unit" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="L">L</SelectItem>
-                        <SelectItem value="KG">KG</SelectItem>
-                        <SelectItem value="EA">EA</SelectItem>
+                        {unitOptions.map((unit) => (
+                          <SelectItem key={unit.id} value={unit.id}>
+                            {unit.code}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
 
-                  <div className="col-span-4">
+                  <div className="col-span-3">
+                    <Label className="text-xs text-slate-400">Label (optional)</Label>
+                    <Input
+                      value={o.label}
+                      onChange={(e) => updateRow(idx, { label: e.target.value })}
+                      placeholder="24mm"
+                      disabled={loading}
+                      className="bg-slate-900 border-slate-800"
+                    />
+                  </div>
+
+                  <div className="col-span-2">
                     <Label className="text-xs text-slate-400">Price</Label>
                     <Input
-                      value={v.price}
-                      onChange={(e) =>
-                        updateVariant(idx, { price: e.target.value })
-                      }
-                      placeholder="792.38"
+                      value={o.price}
+                      onChange={(e) => updateRow(idx, { price: e.target.value })}
+                      placeholder="39.99"
                       disabled={loading}
                       inputMode="decimal"
                       className="bg-slate-900 border-slate-800"
@@ -351,8 +489,8 @@ export function CreateProductDialog({
                       type="button"
                       variant="ghost"
                       size="icon"
-                      onClick={() => removeVariantRow(idx)}
-                      disabled={loading || variants.length <= 1}
+                      onClick={() => removeRow(idx)}
+                      disabled={loading || options.length <= 1}
                       className="text-red-400 hover:text-red-300"
                       title="Remove"
                     >
@@ -379,17 +517,22 @@ export function CreateProductDialog({
               variant="secondary"
               disabled={loading}
               className="gap-2"
-              onClick={(e) => handleSubmit(e as any, true)}
+              onClick={() => handleSubmit(true)}
             >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
               Create & Add Another
             </Button>
-            <Button type="submit" disabled={loading} className="gap-2">
+            <Button 
+              type="button" 
+              disabled={loading} 
+              className="gap-2"
+              onClick={() => handleSubmit(false)}
+            >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
               Create Product
             </Button>
           </div>
-        </form>
+        </div>
       </DialogContent>
     </Dialog>
   );

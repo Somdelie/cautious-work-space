@@ -1,428 +1,227 @@
+
 "use server";
+
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
-type JobWithRelations = Awaited<
-  ReturnType<
-    typeof prisma.job.findMany<{
-      include: {
-        manager: true;
-        supplier: true;
-        jobProducts: {
-          include: {
-            product: true;
-          };
-        };
-      };
-    }>
-  >
->[number];
+function decToNumber(v: any): number {
+  if (v === null || v === undefined) return 0;
+  if (v instanceof Prisma.Decimal) return Number(v.toString());
+  if (typeof v === "string") return Number(v);
+  if (typeof v === "number") return v;
+  return Number(v);
+}
 
-type GetAllJobsResult = {
-  success: boolean;
-  data: JobWithRelations[] | null;
-  error: unknown | null;
+export type JobRowDTO = {
+  specPdfUrl: null;
+  boqPdfUrl: null;
+  id: string;
+  jobNumber: string;
+  siteName: string;
+  client: string | null;
+
+  manager: { id: string; name: string } | null;
+  supplier: { id: string; name: string } | null;
+
+  isStarted: boolean;
+  isFinished: boolean;
+
+  specNotRequired?: boolean;
+  boqNotRequired?: boolean;
+  safetyFileNotRequired?: boolean;
+
+  specsReceived: boolean;
+  boqReceived: boolean;
+  safetyFile: boolean;
+  finishingSchedule: string | null;
+
+  createdAt: string;
+
+  // ✅ costs
+  materialCost: number;
+  totalActual: number;
 };
 
-// get all jobs with relations
-export async function getAllJobs(): Promise<GetAllJobsResult> {
+export async function getAllJobsDTO() {
   try {
     const jobs = await prisma.job.findMany({
       include: {
-        manager: true,
-        supplier: true,
-        jobProducts: { include: { product: true } },
-        orders: {
-          include: {
-            items: {
-              include: {
-                product: true,
-                supplier: true,
-                variant: true,
-              },
-            },
-          },
-          orderBy: { createdAt: "desc" },
-        },
-        jobCostSummaries: true,
+        manager: { select: { id: true, name: true } },
+        supplier: { select: { id: true, name: true } },
+        jobCostSummary: true,
       },
       orderBy: { createdAt: "desc" },
     });
 
-    // Serialize Decimal fields in jobCostSummaries
-    function serializeJob(job: any) {
+    // ongoing first
+    const sorted = [...jobs].sort((a, b) => {
+      const ao = a.isStarted && !a.isFinished;
+      const bo = b.isStarted && !b.isFinished;
+      if (ao && !bo) return -1;
+      if (!ao && bo) return 1;
+      return 0;
+    });
+
+    const data: JobRowDTO[] = sorted.map((j) => {
+      const summary = j.jobCostSummary ?? null;
+
       return {
-        ...job,
-        jobCostSummaries: (job.jobCostSummaries || []).map((s: any) => ({
-          ...s,
-          materialsActual:
-            typeof s.materialsActual === "object" &&
-            s.materialsActual !== null &&
-            typeof s.materialsActual.toNumber === "function"
-              ? s.materialsActual.toNumber()
-              : s.materialsActual,
-          materialsEstimate:
-            typeof s.materialsEstimate === "object" &&
-            s.materialsEstimate !== null &&
-            typeof s.materialsEstimate.toNumber === "function"
-              ? s.materialsEstimate.toNumber()
-              : s.materialsEstimate,
-          laborActual:
-            typeof s.laborActual === "object" &&
-            s.laborActual !== null &&
-            typeof s.laborActual.toNumber === "function"
-              ? s.laborActual.toNumber()
-              : s.laborActual,
-          totalActual:
-            typeof s.totalActual === "object" &&
-            s.totalActual !== null &&
-            typeof s.totalActual.toNumber === "function"
-              ? s.totalActual.toNumber()
-              : s.totalActual,
-          totalEstimate:
-            typeof s.totalEstimate === "object" &&
-            s.totalEstimate !== null &&
-            typeof s.totalEstimate.toNumber === "function"
-              ? s.totalEstimate.toNumber()
-              : s.totalEstimate,
-        })),
+        id: j.id,
+        jobNumber: j.jobNumber,
+        siteName: j.siteName,
+        client: j.client ?? null,
+
+        manager: j.manager ? { id: j.manager.id, name: j.manager.name } : null,
+        supplier: j.supplier ? { id: j.supplier.id, name: j.supplier.name } : null,
+
+        isStarted: j.isStarted,
+        isFinished: j.isFinished,
+
+        specNotRequired: j.specNotRequired,
+        boqNotRequired: j.boqNotRequired,
+        safetyFileNotRequired: j.safetyFileNotRequired,
+
+        specsReceived: !!j.specPdfUrl,
+        boqReceived: !!j.boqPdfUrl,
+        safetyFile: !!j.safetyFile,
+        finishingSchedule: j.finishingSchedule ?? null,
+
+        createdAt: j.createdAt.toISOString(),
+
+        materialCost: decToNumber(summary?.materialsActual ?? 0),
+        totalActual: decToNumber(summary?.totalActual ?? 0),
+        specPdfUrl: null,
+        boqPdfUrl: null,
       };
-    }
-    const safeJobs = jobs.map(serializeJob);
-
-    // Sort jobs: ongoing jobs first (isStarted=true, isFinished=false), then others
-    const sortedJobs = [...safeJobs].sort(
-      (a: JobWithRelations, b: JobWithRelations) => {
-        // Ongoing jobs (started but not finished) come first
-        const aIsOngoing = a.isStarted && !a.isFinished;
-        const bIsOngoing = b.isStarted && !b.isFinished;
-
-        if (aIsOngoing && !bIsOngoing) return -1;
-        if (!aIsOngoing && bIsOngoing) return 1;
-
-        // If both are ongoing or both are not, maintain createdAt order (newest first)
-        return 0;
-      },
-    );
-
-    return {
-      success: true,
-      data: sortedJobs,
-      error: null,
-    };
-  } catch (error: unknown) {
-    return {
-      error: error,
-      data: null,
-      success: false,
-    };
-  }
-}
-
-// get finished jobs
-export async function getFinishedJobs() {
-  try {
-    const jobs = await prisma.job.findMany({
-      where: { isFinished: true },
     });
-    return { success: true, data: jobs };
-  } catch {
-    return { success: false, error: "Failed to fetch finished jobs" };
+
+    return { success: true, data, error: null };
+  } catch (e: any) {
+    return { success: false, data: null, error: e?.message ?? "Failed" };
   }
 }
 
-// get jobs by supplier id
-export async function getJobsBySupplierId(supplierId: string) {
-  try {
-    const jobs = await prisma.job.findMany({
-      where: { supplierId },
-    });
-    return { success: true, data: jobs };
-  } catch {
-    return { success: false, error: "Failed to fetch jobs by supplier id" };
-  }
-}
-
-// get jobs by manager id
-export async function getJobsByManagerId(managerId: string) {
-  try {
-    const jobs = await prisma.job.findMany({
-      where: { managerId },
-    });
-    return { success: true, data: jobs };
-  } catch {
-    return { success: false, error: "Failed to fetch jobs by manager id" };
-  }
-}
-
-// create new job
-export async function createJob(data: {
+/** Keep your update/create logic (server-only), but never return raw prisma objects to client pages */
+export async function createJob(input: {
   jobNumber: string;
   siteName: string;
   client?: string;
   managerId?: string;
   supplierId?: string;
-  specPdfUrl?: string;
-  boqPdfUrl?: string;
 }) {
-  const job = await prisma.job.create({
-    data: {
-      jobNumber: data.jobNumber,
-      siteName: data.siteName,
-      client: data.client,
-      managerId: data.managerId ?? null,
-      supplierId: data.supplierId ?? null,
-      specPdfUrl: data.specPdfUrl,
-      boqPdfUrl: data.boqPdfUrl,
-    },
-    include: {
-      manager: true,
-      supplier: true,
-      jobProducts: { include: { product: true } },
-    },
-  });
+  const jobNumber = input.jobNumber?.trim();
+  const siteName = input.siteName?.trim();
 
-  revalidatePath("/jobs");
-  return { success: true, data: job };
-}
+  if (!jobNumber || !siteName) return { success: false, error: "jobNumber + siteName required" };
 
-// get job by id
-export async function getJobById(id: string) {
   try {
-    const job = await prisma.job.findUnique({
-      where: { id },
-      include: {
-        manager: true,
-        supplier: true,
-        jobProducts: {
-          include: {
-            product: true,
-          },
-        },
-        orders: {
-          include: {
-            items: {
-              include: {
-                product: true,
-                supplier: true,
-                variant: true,
-              },
-            },
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-        },
-      },
-    });
-    return { success: true, data: job };
-  } catch {
-    return { success: false, error: "Failed to fetch job" };
-  }
-}
-
-// update job by id
-export async function updateJob(
-  id: string,
-  data: {
-    jobNumber?: string;
-    siteName?: string;
-    client?: string | null;
-    managerId?: string | null;
-    supplierId?: string | null;
-    specPdfUrl?: string | null;
-    boqPdfUrl?: string | null;
-
-    // ✅ flags
-    specNotRequired?: boolean;
-    boqNotRequired?: boolean;
-    safetyFileNotRequired?: boolean;
-
-    // ✅ received boolean
-    safetyFile?: boolean;
-
-    isStarted?: boolean;
-    isFinished?: boolean;
-  },
-) {
-  try {
-    const updateData: any = {
-      jobNumber: data.jobNumber,
-      siteName: data.siteName,
-      client: data.client ?? undefined,
-      managerId: data.managerId ?? undefined,
-      supplierId: data.supplierId ?? undefined,
-      specPdfUrl: data.specPdfUrl ?? undefined,
-      boqPdfUrl: data.boqPdfUrl ?? undefined,
-
-      ...(typeof data.specNotRequired === "boolean" && {
-        specNotRequired: data.specNotRequired,
-      }),
-      ...(typeof data.boqNotRequired === "boolean" && {
-        boqNotRequired: data.boqNotRequired,
-      }),
-      ...(typeof data.safetyFileNotRequired === "boolean" && {
-        safetyFileNotRequired: data.safetyFileNotRequired,
-      }),
-
-      ...(typeof data.safetyFile === "boolean" && {
-        safetyFile: data.safetyFile,
-      }),
-    };
-
-    // status logic (keep yours)
-    if (typeof data.isStarted === "boolean") {
-      updateData.isStarted = data.isStarted;
-      updateData.startedAt = data.isStarted ? new Date() : null;
-
-      if (!data.isStarted) {
-        updateData.isFinished = false;
-        updateData.finishedAt = null;
-      }
-    }
-
-    if (typeof data.isFinished === "boolean") {
-      updateData.isFinished = data.isFinished;
-      if (data.isFinished) {
-        updateData.isStarted = true;
-        updateData.startedAt = updateData.startedAt ?? new Date();
-        updateData.finishedAt = new Date();
-      } else {
-        updateData.finishedAt = null;
-      }
-    }
-
-    const job = await prisma.job.update({
-      where: { id },
-      data: updateData,
-      include: {
-        manager: true,
-        supplier: true,
-        jobProducts: { include: { product: true } },
+    const j = await prisma.job.create({
+      data: {
+        jobNumber,
+        siteName,
+        client: input.client?.trim() || null,
+        managerId: input.managerId ?? null,
+        supplierId: input.supplierId ?? null,
       },
     });
 
     revalidatePath("/jobs");
+    return { success: true, data: { id: j.id } };
+  } catch (e: any) {
+    return { success: false, error: e?.message ?? "Failed to create job" };
+  }
+}
+
+export async function updateJob(id: string, data: any) {
+  if (!id) return { success: false, error: "Missing id" };
+
+  try {
+    await prisma.job.update({ where: { id }, data });
+    revalidatePath("/jobs");
     revalidatePath(`/jobs/${id}`);
-    return { success: true, data: job };
+    return { success: true };
   } catch (e: any) {
     return { success: false, error: e?.message ?? "Failed to update job" };
   }
 }
 
-// set products for a job
-export async function setJobProducts(
-  jobId: string,
-  payload: {
-    items: Array<{
-      productId: string;
-      required?: boolean;
-      quantity?: number | null;
-      unit?: string | null;
-    }>;
-  },
-) {
+/**
+ * Mark job as started
+ */
+export async function markJobAsStarted(jobId: string) {
+  if (!jobId) return { success: false, error: "Missing jobId" };
   try {
-    // basic validation
-    const clean = (payload.items ?? [])
-      .filter((x) => x.productId)
-      .map((x) => ({
-        productId: x.productId,
-        required: Boolean(x.required),
-        quantity:
-          x.quantity === null || x.quantity === undefined
-            ? null
-            : Number(x.quantity),
-        unit: x.unit ? String(x.unit).trim() || null : null,
-      }));
-
-    await prisma.$transaction(async (tx) => {
-      // replace-mode (simple + reliable)
-      await tx.jobProduct.deleteMany({ where: { jobId } });
-
-      if (clean.length) {
-        await tx.jobProduct.createMany({
-          data: clean.map((x) => ({
-            jobId,
-            productId: x.productId,
-            required: x.required,
-            quantity: x.quantity,
-            unit: x.unit,
-          })),
-        });
-      }
+    await prisma.job.update({
+      where: { id: jobId },
+      data: { isStarted: true, startedAt: new Date() },
     });
-
     revalidatePath("/jobs");
     revalidatePath(`/jobs/${jobId}`);
     return { success: true };
   } catch (e: any) {
-    return {
-      success: false,
-      error: e?.message ?? "Failed to update job products",
-    };
+    return { success: false, error: e?.message ?? "Failed to mark as started" };
   }
 }
 
-// delete job by id
-export async function deleteJob(id: string) {
+/**
+ * Mark job as finished
+ */
+export async function markJobAsFinished(jobId: string) {
+  if (!jobId) return { success: false, error: "Missing jobId" };
   try {
-    await prisma.job.delete({
-      where: { id },
+    await prisma.job.update({
+      where: { id: jobId },
+      data: { isFinished: true, finishedAt: new Date() },
     });
     revalidatePath("/jobs");
-    revalidatePath("/");
+    revalidatePath(`/jobs/${jobId}`);
     return { success: true };
-  } catch {
-    return { success: false, error: "Failed to delete job" };
+  } catch (e: any) {
+    return { success: false, error: e?.message ?? "Failed to mark as finished" };
   }
 }
 
-// mark job as started
-export async function markJobAsStarted(id: string) {
+// ==========================================
+// get job by id with all details
+export async function getJobByIdDTO(jobId: string) {
   try {
-    const job = await prisma.job.update({
-      where: { id },
-      data: {
-        isStarted: true,
-        startedAt: new Date(),
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      include: {
+        manager: { select: { id: true, name: true } },
+        supplier: { select: { id: true, name: true } },
+        jobCostSummary: true,
       },
     });
-    revalidatePath("/jobs");
-    revalidatePath("/");
-    return { success: true, data: job };
-  } catch {
-    return { success: false, error: "Failed to mark job as started" };
+    if (!job) return { success: false, data: null, error: "Job not found" };
+
+    const data: JobRowDTO = {
+      id: job.id,
+      jobNumber: job.jobNumber,
+      siteName: job.siteName,
+      client: job.client ?? null,
+      manager: job.manager ? { id: job.manager.id, name: job.manager.name } : null,
+      supplier: job.supplier ? { id: job.supplier.id, name: job.supplier.name } : null,
+      isStarted: job.isStarted,
+      isFinished: job.isFinished,
+      specNotRequired: job.specNotRequired,
+      boqNotRequired: job.boqNotRequired,
+      safetyFileNotRequired: job.safetyFileNotRequired,
+      specsReceived: !!job.specPdfUrl,
+      boqReceived: !!job.boqPdfUrl,
+      safetyFile: !!job.safetyFile,
+      finishingSchedule: job.finishingSchedule ?? null,
+      createdAt: job.createdAt.toISOString(),
+      materialCost: decToNumber(job.jobCostSummary?.materialsActual ?? 0),
+      totalActual: decToNumber(job.jobCostSummary?.totalActual ?? 0),
+      specPdfUrl: null,
+      boqPdfUrl: null
+    }
+    return { success: true, data, error: null }
+  } catch (e: any) {
+    return { success: false, data: null, error: e?.message ?? "Failed to fetch job" };
   }
 }
 
-// mark job as finished
-export async function markJobAsFinished(id: string) {
-  try {
-    const job = await prisma.job.update({
-      where: { id },
-      data: {
-        isStarted: true,
-        isFinished: true,
-        finishedAt: new Date(),
-      },
-    });
-    revalidatePath("/jobs");
-    revalidatePath("/");
-    return { success: true, data: job };
-  } catch {
-    return { success: false, error: "Failed to mark job as finished" };
-  }
-}
-
-// get total actual and estimate costs across all jobs
-export async function getAllJobsCostTotals() {
-  const agg = await prisma.jobCostSummary.aggregate({
-    _sum: { totalActual: true, totalEstimate: true },
-  });
-  return {
-    success: true,
-    totalActual: agg._sum.totalActual ?? 0,
-    totalEstimate: agg._sum.totalEstimate ?? 0,
-  };
-}
+// ==========================================
